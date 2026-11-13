@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
+import 'package:pg_hostel_management/core/utils/validation_utils.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pg_hostel_management/features/electricity_bills/models/electricity_bill.dart';
 import 'package:pg_hostel_management/features/electricity_bills/providers/electricity_bill_provider.dart';
 import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
 import 'package:pg_hostel_management/core/constants/app_constants.dart';
 
 class ElectricityBillsScreen extends StatefulWidget {
@@ -32,7 +32,7 @@ class _ElectricityBillsScreenState extends State<ElectricityBillsScreen> {
   void initState() {
     super.initState();
     _storage = SecureStorageService();
-    _notifier = context.read<ElectricityBillNotifier>();
+    _notifier = ProviderScope.containerOf(context, listen: false).read(electricityBillProvider.notifier);
     _loadBills();
     _initializeDateFields();
   }
@@ -92,7 +92,7 @@ class _ElectricityBillsScreenState extends State<ElectricityBillsScreen> {
             child: Column(
               children: [
                 DropdownButtonFormField<String>(
-                  value: _tenantNameController.isNotEmpty ? _tenantNameController.text : null,
+                  initialValue: _tenantNameController.text.isNotEmpty ? _tenantNameController.text : null,
                   decoration: const InputDecoration(
                     labelText: 'Tenant Name',
                     border: OutlineInputBorder(),
@@ -134,7 +134,7 @@ class _ElectricityBillsScreenState extends State<ElectricityBillsScreen> {
                     labelText: 'Amount',
                     border: OutlineInputBorder(),
                   ),
-                  keyboardType: const TextInputType(editor: TextInputType.number),
+                  keyboardType: TextInputType.number,
                   validator: (value) => ValidationUtils.validateExpenseAmount(value),
                 ),
                 const SizedBox(height: 16),
@@ -151,7 +151,7 @@ class _ElectricityBillsScreenState extends State<ElectricityBillsScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _monthController.isNotEmpty ? _monthController.text : AppConstants.paymentMonths.first,
+                  initialValue: _monthController.text.isNotEmpty ? _monthController.text : AppConstants.paymentMonths.first,
                   decoration: const InputDecoration(
                     labelText: 'Month',
                     border: OutlineInputBorder(),
@@ -318,7 +318,7 @@ class _ElectricityBillsScreenState extends State<ElectricityBillsScreen> {
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          children [
+          children: [
             Text(
               label,
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),

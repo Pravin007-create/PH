@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
+import 'package:pg_hostel_management/core/constants/app_constants.dart';
+import 'package:pg_hostel_management/core/utils/validation_utils.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pg_hostel_management/features/expenses/models/expense.dart';
 import 'package:pg_hostel_management/features/expenses/providers/expense_provider.dart';
 import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
 
 class ExpensesScreen extends StatefulWidget {
   const ExpensesScreen({super.key});
 
   @override
-  State<ExpensesScreen> createState() => _ExpensesScreenState;
+  State<ExpensesScreen> createState() => _ExpensesScreenState();
 }
 
 class _ExpensesScreenState extends State<ExpensesScreen> {
@@ -29,7 +30,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   void initState() {
     super.initState();
     _storage = SecureStorageService();
-    _notifier = context.read<ExpenseNotifier>();
+    _notifier = ProviderScope.containerOf(context, listen: false).read(expenseProvider.notifier);
     _loadExpenses();
     _initializeCategory();
     _initializeDate();
@@ -103,7 +104,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                     labelText: 'Amount',
                     border: OutlineInputBorder(),
                   ),
-                  keyboardType: const TextInputType(editor: TextInputType.number),
+                  keyboardType: TextInputType.number,
                   validator: (value) =>
                       ValidationUtils.validateExpenseAmount(value),
                 ),
@@ -121,7 +122,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _categoryController.text.isNotEmpty ? _categoryController.text : AppConstants.expenseCategories.first,
+                  initialValue: _categoryController.text.isNotEmpty ? _categoryController.text : AppConstants.expenseCategories.first,
                   decoration: const InputDecoration(
                     labelText: 'Category',
                     border: OutlineInputBorder(),
@@ -221,7 +222,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                 padding: const EdgeInsets.all(16.0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children [
+                  children: [
                     Text(
                       'Total Expenses',
                       style: TextStyle(fontSize: 16, color: Colors.grey[600]),

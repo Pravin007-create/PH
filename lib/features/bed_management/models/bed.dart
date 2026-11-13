@@ -1,4 +1,4 @@
-import 'package:equatable/equatable';
+import 'package:equatable/equatable.dart';
 
 enum BedStatus { available, occupied, maintenance, deactivated }
 
@@ -48,6 +48,16 @@ class Bed extends Equatable {
     );
   }
 
+  Map<String, dynamic> toMap() {
+    return {
+      'bedNumber': bedNumber,
+      'roomNumber': roomNumber,
+      'status': status.name,
+      'tenantName': tenantName,
+      'moveInDate': moveInDate?.toIso8601String(),
+    };
+  }
+
   @override
-  List<Object> get props => [bedNumber, roomNumber, status, tenantName, moveInDate?.toIso8601String()];
+  List<Object?> get props => [bedNumber, roomNumber, status, tenantName, moveInDate?.toIso8601String()];
 }

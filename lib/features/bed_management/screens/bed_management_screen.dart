@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
+import 'package:pg_hostel_management/core/utils/validation_utils.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pg_hostel_management/features/bed_management/models/bed.dart';
 import 'package:pg_hostel_management/features/bed_management/providers/bed_provider.dart';
 import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
 
 class BedManagementScreen extends StatefulWidget {
   const BedManagementScreen({super.key});
@@ -27,7 +27,7 @@ class _BedManagementScreenState extends State<BedManagementScreen> {
   void initState() {
     super.initState();
     _storage = SecureStorageService();
-    _notifier = context.read<BedNotifier>();
+    _notifier = ProviderScope.containerOf(context, listen: false).read(bedProvider.notifier);
     _loadBeds();
   }
 
@@ -97,7 +97,7 @@ class _BedManagementScreenState extends State<BedManagementScreen> {
                 ),
                 const SizedBox(height: 24),
                 DropdownButtonFormField<BedStatus>(
-                  value: bed.status,
+                  initialValue: bed.status,
                   decoration: const InputDecoration(
                     labelText: 'Status',
                     border: OutlineInputBorder(),
@@ -294,7 +294,7 @@ class _BedManagementScreenState extends State<BedManagementScreen> {
       child: Padding(
         padding: const EdgeInsets.all(8.0),
         child: Column(
-          children [
+          children: [
             Icon(icon, color: color, size: 32),
             const SizedBox(height: 4),
             Text(

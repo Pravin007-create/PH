@@ -1,5 +1,4 @@
-import 'package:equatable/equatable';
-import 'package:pg_hostel_management/core/database/app_database.dart';
+import 'package:equatable/equatable.dart';
 
 class Tenant extends Equatable {
   final int id;
@@ -95,7 +94,7 @@ class Tenant extends Equatable {
   }
 
   @override
-  List<Object> get props => [
+  List<Object?> get props => [
         name,
         mobileNumber,
         email,

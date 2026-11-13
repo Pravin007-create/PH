@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:pg_hostel_management/features/electricity_bills/models/electricity_bill.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/securestorage/securestorage_service.dart';
+import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
 
 final electricityBillProvider = StateNotifierProvider<ElectricityBillNotifier, List<ElectricityBill>>((ref) {
   final storage = SecureStorageService();
@@ -20,7 +22,7 @@ class ElectricityBillNotifier extends StateNotifier<List<ElectricityBill>> {
   void updateBill(ElectricityBill bill) {
     final index = state.indexWhere((b) => b.tenantName == bill.tenantName && b.roomNumber == bill.roomNumber && b.bedNumber == bill.bedNumber && b.month == bill.month);
     if (index >= 0) {
-      state = [...state..index = bill];
+      state = [...state]..[index] = bill;
       _saveBills();
     }
   }
@@ -44,6 +46,6 @@ class ElectricityBillNotifier extends StateNotifier<List<ElectricityBill>> {
 
   void _saveBills() {
     final billData = state.map((bill) => bill.toMap()).toList();
-    _storage.write(key: 'saved_bills', value: billData.toString());
+    _storage.write(key: 'saved_bills', value: jsonEncode(billData));
   }
 }

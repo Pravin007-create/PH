@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
+import 'package:pg_hostel_management/core/router.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -56,7 +56,7 @@ class HomeScreen extends StatelessWidget {
           ),
           _buildDrawerItem(
             context,
-            icon: Icons.pg_overnight,
+            icon: Icons.apartment,
             label: 'PG Profile',
             onTap: () => context.go('/pg-profile'),
           ),
@@ -86,7 +86,7 @@ class HomeScreen extends StatelessWidget {
           ),
           _buildDrawerItem(
             context,
-            icon: Icons.electricity,
+            icon: Icons.electric_bolt,
             label: 'Electricity Bills',
             onTap: () => context.go('/electricity-bills'),
           ),
@@ -156,7 +156,7 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _buildFeatureCard(
             context,
-            icon: Icons.pg_overnight,
+            icon: Icons.apartment,
             title: 'PG Profile',
             subtitle: 'Manage PG details and preferences',
             onTap: () => context.go('/pg-profile'),
@@ -196,7 +196,7 @@ class HomeScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _buildFeatureCard(
             context,
-            icon: Icons.electricity,
+            icon: Icons.electric_bolt,
             title: 'Electricity Bills',
             subtitle: 'Track electricity charges',
             onTap: () => context.go('/electricity-bills'),
@@ -239,7 +239,7 @@ class HomeScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1976D2).withOpacity(0.1),
+                  color: const Color(0xFF1976D2).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: const Color(0xFF1976D2), size: 28),
@@ -248,7 +248,7 @@ class HomeScreen extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children [
+                  children: [
                     Text(
                       title,
                       style: const TextStyle(

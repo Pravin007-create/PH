@@ -56,7 +56,7 @@ class PGProfile extends Equatable {
   }
 
   @override
-  List<Object> get props => [
+  List<Object?> get props => [
         ownerName,
         pgName,
         address,

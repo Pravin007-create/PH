@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:pg_hostel_management/features/rent_payment/models/rent_payment.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/securestorage/securestorage_service.dart';
+import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
 
 final rentPaymentProvider = StateNotifierProvider<RentPaymentNotifier, List<RentPayment>>((ref) {
   final storage = SecureStorageService();
@@ -20,7 +22,7 @@ class RentPaymentNotifier extends StateNotifier<List<RentPayment>> {
   void updatePayment(RentPayment payment) {
     final index = state.indexWhere((p) => p.tenantName == payment.tenantName && p.roomNumber == payment.roomNumber && p.bedNumber == payment.bedNumber && p.month == payment.month);
     if (index >= 0) {
-      state = [...state..index = payment];
+      state = [...state]..[index] = payment;
       _savePayments();
     }
   }
@@ -44,6 +46,6 @@ class RentPaymentNotifier extends StateNotifier<List<RentPayment>> {
 
   void _savePayments() {
     final paymentData = state.map((payment) => payment.toMap()).toList();
-    _storage.write(key: 'saved_payments', value: paymentData.toString());
+    _storage.write(key: 'saved_payments', value: jsonEncode(paymentData));
   }
 }

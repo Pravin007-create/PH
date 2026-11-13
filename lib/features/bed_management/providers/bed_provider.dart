@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:pg_hostel_management/features/bed_management/models/bed.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/securestorage/securestorage_service.dart';
+import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
 
 final bedProvider = StateNotifierProvider<BedNotifier, List<Bed>>((ref) {
   final storage = SecureStorageService();
@@ -20,7 +22,7 @@ class BedNotifier extends StateNotifier<List<Bed>> {
   void updateBed(Bed bed) {
     final index = state.indexWhere((b) => b.bedNumber == bed.bedNumber);
     if (index >= 0) {
-      state = [...state..index = bed];
+      state = [...state]..[index] = bed;
       _saveBeds();
     }
   }
@@ -29,7 +31,7 @@ class BedNotifier extends StateNotifier<List<Bed>> {
     final index = state.indexWhere((b) => b.bedNumber == bedNumber);
     if (index >= 0) {
       final updatedBed = state[index].copyWith(status: status);
-      state = [...state..index = updatedBed];
+      state = [...state]..[index] = updatedBed;
       _saveBeds();
     }
   }
@@ -49,6 +51,6 @@ class BedNotifier extends StateNotifier<List<Bed>> {
 
   void _saveBeds() {
     final bedData = state.map((bed) => bed.toMap()).toList();
-    _storage.write(key: 'saved_beds', value: bedData.toString());
+    _storage.write(key: 'saved_beds', value: jsonEncode(bedData));
   }
 }

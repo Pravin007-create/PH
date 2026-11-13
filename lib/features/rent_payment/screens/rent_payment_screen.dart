@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
+import 'package:pg_hostel_management/core/utils/validation_utils.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pg_hostel_management/features/rent_payment/models/rent_payment.dart';
 import 'package:pg_hostel_management/features/rent_payment/providers/rent_payment_provider.dart';
 import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
 import 'package:pg_hostel_management/core/constants/app_constants.dart';
 
 class RentPaymentScreen extends StatefulWidget {
@@ -32,7 +32,7 @@ class _RentPaymentScreenState extends State<RentPaymentScreen> {
   void initState() {
     super.initState();
     _storage = SecureStorageService();
-    _notifier = context.read<RentPaymentNotifier>();
+    _notifier = ProviderScope.containerOf(context, listen: false).read(rentPaymentProvider.notifier);
     _loadPayments();
     _initializeDateFields();
   }
@@ -92,7 +92,7 @@ class _RentPaymentScreenState extends State<RentPaymentScreen> {
             child: Column(
               children: [
                 DropdownButtonFormField<String>(
-                  value: _tenantNameController.isNotEmpty ? _tenantNameController.text : null,
+                  initialValue: _tenantNameController.text.isNotEmpty ? _tenantNameController.text : null,
                   decoration: const InputDecoration(
                     labelText: 'Tenant Name',
                     border: OutlineInputBorder(),
@@ -134,7 +134,7 @@ class _RentPaymentScreenState extends State<RentPaymentScreen> {
                     labelText: 'Amount',
                     border: OutlineInputBorder(),
                   ),
-                  keyboardType: const TextInputType(editor: TextInputType.number),
+                  keyboardType: TextInputType.number,
                   validator: (value) =>
                       ValidationUtils.validateRentAmount(value),
                 ),
@@ -152,7 +152,7 @@ class _RentPaymentScreenState extends State<RentPaymentScreen> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _monthController.isNotEmpty ? _monthController.text : AppConstants.paymentMonths.first,
+                  initialValue: _monthController.text.isNotEmpty ? _monthController.text : AppConstants.paymentMonths.first,
                   decoration: const InputDecoration(
                     labelText: 'Month',
                     border: OutlineInputBorder(),
@@ -319,7 +319,7 @@ class _RentPaymentScreenState extends State<RentPaymentScreen> {
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          children [
+          children: [
             Text(
               label,
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),

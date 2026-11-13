@@ -1,33 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pg_hostel_management/features/dashboard/providers/dashboard_provider.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
+import 'package:pg_hostel_management/core/router.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState;
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
-  late final DashboardNotifier _notifier;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _notifier = context.read<DashboardNotifier>();
-    _loadData();
-  }
-
-  Future<void> _loadData() async {
-    await _notifier.loadData();
-    setState(() => _isLoading = false);
-  }
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  final bool _isLoading = false;
 
   @override
   Widget build(BuildContext context) {
+    final data = ref.watch(dashboardProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashboard'),
@@ -58,7 +46,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _buildKPICard(
                     context,
                     'Total Rooms',
-                    _notifier.state['totalRooms'] ?? 0,
+                    data['totalRooms'] ?? 0,
                     Icons.room,
                     const Color(0xFF1976D2),
                   ),
@@ -66,7 +54,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _buildKPICard(
                     context,
                     'Total Beds',
-                    _notifier.state['totalBeds'] ?? 0,
+                    data['totalBeds'] ?? 0,
                     Icons.bed,
                     Colors.green,
                   ),
@@ -74,7 +62,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _buildKPICard(
                     context,
                     'Available Beds',
-                    _notifier.state['availableBeds'] ?? 0,
+                    data['availableBeds'] ?? 0,
                     Icons.check_circle,
                     Colors.green,
                   ),
@@ -82,7 +70,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _buildKPICard(
                     context,
                     'Occupied Beds',
-                    _notifier.state['occupiedBeds'] ?? 0,
+                    data['occupiedBeds'] ?? 0,
                     Icons.remove_circle,
                     Colors.red,
                   ),
@@ -90,7 +78,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _buildKPICard(
                     context,
                     'Total Tenants',
-                    _notifier.state['totalTenants'] ?? 0,
+                    data['totalTenants'] ?? 0,
                     Icons.person,
                     Colors.blue,
                   ),
@@ -98,7 +86,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _buildKPICard(
                     context,
                     'Monthly Revenue',
-                    _notifier.state['monthlyRevenue'] ?? 0.0,
+                    data['monthlyRevenue'] ?? 0.0,
                     Icons.monetization_on,
                     Colors.orange,
                   ),
@@ -106,7 +94,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   _buildKPICard(
                     context,
                     'Outstanding Balance',
-                    _notifier.state['outstandingBalance'] ?? 0.0,
+                    data['outstandingBalance'] ?? 0.0,
                     Icons.warning,
                     Colors.red,
                   ),
@@ -124,7 +112,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 8),
                   _buildRecentList(
                     context,
-                    _notifier.state['recentPayments'] ?? [],
+                    data['recentPayments'] ?? [],
                     Icons.money,
                     Colors.green,
                     'payment',
@@ -144,7 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 8),
                   _buildRecentList(
                     context,
-                    _notifier.state['recentExpenses'] ?? [],
+                    data['recentExpenses'] ?? [],
                     Icons.receipt,
                     Colors.blue,
                     'expense',
@@ -152,7 +140,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
             ),
-      ),
     );
   }
 
@@ -171,11 +158,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Row(
-          children [
+          children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icon, color: color, size: 28),
@@ -184,7 +171,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children [
+                children: [
                   Text(
                     label,
                     style: const TextStyle(fontSize: 12, color: Colors.grey),

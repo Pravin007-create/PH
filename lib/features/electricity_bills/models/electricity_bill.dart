@@ -1,4 +1,4 @@
-import 'package:equatable/equatable';
+import 'package:equatable/equatable.dart';
 
 class ElectricityBill extends Equatable {
   final int id;
@@ -64,5 +64,5 @@ class ElectricityBill extends Equatable {
   }
 
   @override
-  List<Object> get props => [tenantName, roomNumber, bedNumber, amount, billDate, month];
+  List<Object?> get props => [tenantName, roomNumber, bedNumber, amount, billDate, month];
 }

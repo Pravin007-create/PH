@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:pg_hostel_management/features/tenant_management/models/tenant.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/securestorage/securestorage_service.dart';
+import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
 
 final tenantProvider = StateNotifierProvider<TenantNotifier, List<Tenant>>((ref) {
   final storage = SecureStorageService();
@@ -20,7 +22,7 @@ class TenantNotifier extends StateNotifier<List<Tenant>> {
   void updateTenant(Tenant tenant) {
     final index = state.indexWhere((t) => t.name == tenant.name && t.roomNumber == tenant.roomNumber && t.bedNumber == tenant.bedNumber);
     if (index >= 0) {
-      state = [...state..index = tenant];
+      state = [...state]..[index] = tenant;
       _saveTenants();
     }
   }
@@ -31,18 +33,10 @@ class TenantNotifier extends StateNotifier<List<Tenant>> {
   }
 
   Tenant? getTenant(String name, String roomNumber, String bedNumber) {
-    return firstWhere((t) => t.name == name && t.roomNumber == roomNumber && t.bedNumber == bedNumber, orElse: () => Tenant(
-      name: '',
-      mobileNumber: '',
-      email: '',
-      address: '',
-      roomNumber: '',
-      bedNumber: '',
-      moveInDate: '',
-      rentPaid: 0,
-      depositPaid: 0,
-      outstandingBalance: 0,
-    ));
+    for (final t in state) {
+      if (t.name == name && t.roomNumber == roomNumber && t.bedNumber == bedNumber) return t;
+    }
+    return null;
   }
 
   List<Tenant> getTenantsByRoom(String roomNumber) {
@@ -51,6 +45,6 @@ class TenantNotifier extends StateNotifier<List<Tenant>> {
 
   void _saveTenants() {
     final tenantData = state.map((tenant) => tenant.toMap()).toList();
-    _storage.write(key: 'saved_tenants', value: tenantData.toString());
+    _storage.write(key: 'saved_tenants', value: jsonEncode(tenantData));
   }
 }

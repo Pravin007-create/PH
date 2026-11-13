@@ -1,6 +1,6 @@
 import 'package:pg_hostel_management/features/pg_profile/models/pg_profile.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/securestorage/securestorage_service.dart';
+import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
 
 final pgProfileProvider = StateNotifierProvider<PGProfileNotifier, PGProfile>((ref) {
   final storage = SecureStorageService();
@@ -13,11 +13,9 @@ final pgProfileProvider = StateNotifierProvider<PGProfileNotifier, PGProfile>((r
     numberOfRooms: 0,
     facilities: '',
     billingPreferences: '',
-    isActivated: storage.isActivated() ?? false,
-    activationOTP: storage.getOTP(),
-    activationOTPExpiry: storage.getOTPExpiry(),
+    isActivated: false,
   );
-  return PGProfileNotifier(initialProfile, storage);
+  return PGProfileNotifier(initialProfile, storage).._loadFromStorage();
 });
 
 class PGProfileNotifier extends StateNotifier<PGProfile> {
@@ -57,7 +55,7 @@ class PGProfileNotifier extends StateNotifier<PGProfile> {
   }) {
     // Verify OTP - in a real app, this would be sent to a server
     // For now, we accept any 6-digit OTP
-    final isValid = otp.length == 6 && otp.containsOnlyDigits();
+    final isValid = otp.length == 6 && RegExp(r'^[0-9]+\$').hasMatch(otp);
     if (isValid) {
       state = state.copyWith(isActivated: true);
       _storage.saveActivationStatus(
@@ -95,6 +93,17 @@ class PGProfileNotifier extends StateNotifier<PGProfile> {
       isActivated: false,
     );
     _clearStorage();
+  }
+
+  Future<void> _loadFromStorage() async {
+    state = state.copyWith(
+      isActivated: await _storage.isActivated(),
+      ownerName: await _storage.getOwnerName() ?? '',
+      pgName: await _storage.getPGName() ?? '',
+      mobileNumber: await _storage.getMobileNumber() ?? '',
+      activationOTP: await _storage.getOTP(),
+      activationOTPExpiry: await _storage.getOTPExpiry(),
+    );
   }
 
   void _saveToStorage() {

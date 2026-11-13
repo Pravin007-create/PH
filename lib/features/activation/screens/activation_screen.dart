@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:pg_hostel_management/core/utils/validation_utils.dart';
 import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
 import 'package:pg_hostel_management/features/pg_profile/models/pg_profile.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
 
 class ActivationScreen extends StatefulWidget {
   const ActivationScreen({super.key});

@@ -8,12 +8,10 @@ class AppTheme {
       primary: const Color(0xFF1976D2),
       secondary: const Color(0xFF009688),
       surface: Colors.white,
-      background: Colors.white,
       error: Colors.red,
       onPrimary: Colors.white,
       onSecondary: Colors.white,
       onSurface: Colors.black87,
-      onBackground: Colors.black87,
     ),
     scaffoldBackgroundColor: Colors.white,
     appBarTheme: const AppBarTheme(
@@ -37,7 +35,7 @@ class AppTheme {
         ),
       ),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: Colors.white,
       elevation: 2,
       shape: RoundedRectangleBorder(
@@ -54,7 +52,7 @@ class AppTheme {
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),
-  }
+  );
 
   static ThemeData darkTheme = ThemeData(
     useMaterial3: true,
@@ -63,12 +61,10 @@ class AppTheme {
       primary: const Color(0xFF90CAF9),
       secondary: const Color(0xFF00ACC1),
       surface: Color(0xFF212121),
-      background: Color(0xFF121212),
       error: Colors.red,
       onPrimary: Color(0xFF1976D2),
       onSecondary: Color(0xFF00ACC1),
       onSurface: Colors.white,
-      onBackground: Colors.white,
     ),
     scaffoldBackgroundColor: Color(0xFF121212),
     appBarTheme: const AppBarTheme(
@@ -81,4 +77,5 @@ class AppTheme {
         fontWeight: FontWeight.bold,
       ),
     ),
-  )
+  );
+}

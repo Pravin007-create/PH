@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
+import 'package:pg_hostel_management/core/router.dart';
 
 const developerPassword = 'R@kshu@263108##';
 
@@ -35,7 +34,8 @@ class _PasswordGateState extends State<PasswordGate> {
 
       // Proceed to normal app flow
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/');
+      AuthState.passwordVerified = true;
+      context.go('/');
     } else {
       // Show error and allow retry
       if (mounted) {
@@ -49,7 +49,7 @@ class _PasswordGateState extends State<PasswordGate> {
       }
     }
 
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override

@@ -1,4 +1,4 @@
-import 'package:equatable/equatable';
+import 'package:equatable/equatable.dart';
 
 class Room extends Equatable {
   final String roomNumber;
@@ -51,8 +51,23 @@ class Room extends Equatable {
     );
   }
 
+  Map<String, dynamic> toMap() {
+    return {
+      'roomNumber': roomNumber,
+      'floor': floor,
+      'isAC': isAC,
+      'sharingType': sharingType,
+      'totalCapacity': totalCapacity,
+      'numberOfBeds': numberOfBeds,
+      'roomFacilities': roomFacilities,
+      'monthlyRent': monthlyRent,
+      'electricityBillingType': electricityBillingType,
+      'roomStatus': roomStatus,
+    };
+  }
+
   @override
-  List<Object> get props => [
+  List<Object?> get props => [
         roomNumber,
         floor,
         isAC,

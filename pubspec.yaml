@@ -9,8 +9,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
-  # Localization
   flutter_localizations:
     sdk: flutter
 
@@ -22,44 +20,21 @@ dependencies:
   # Navigation
   go_router: ^13.2.1
 
-  # Local Database
-  drift: ^2.30.1
-  sqflite: ^2.3.0
-  path: ^1.9.0
-  path_provider: ^2.1.2
-  sqlite3_flutter_libs: ^0.5.39
-
   # Secure Storage
-  flutter_secure_storage: ^9.0.0
+  flutter_secure_storage: ^9.2.2
 
-  # UI
-  material_design_icons_flutter: ^7.0.8
+  # UI / utilities
   intl: any  # version is pinned by flutter_localizations
   equatable: ^2.0.5
 
-  # PDF Generation
-  pdf: ^3.11.0
-  printing: ^5.13.0
-
-  # CSV Export
-  csv: ^5.0.0
-
-  # Local Notifications
-  flutter_local_notifications: ^16.0.1
-
-
-  # Connectivity
-  connectivity_plus: ^5.0.0
-
-  # Caching
-  shared_preferences: ^2.2.2
+  # Add these back when the code actually uses them:
+  # drift, sqflite, path_provider, pdf, printing, csv,
+  # flutter_local_notifications, connectivity_plus, shared_preferences
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
-

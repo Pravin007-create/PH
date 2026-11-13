@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
+import 'package:pg_hostel_management/core/utils/validation_utils.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pg_hostel_management/features/tenant_management/models/tenant.dart';
 import 'package:pg_hostel_management/features/tenant_management/providers/tenant_provider.dart';
 import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
 
 class TenantManagementScreen extends StatefulWidget {
   const TenantManagementScreen({super.key});
@@ -31,7 +31,7 @@ class _TenantManagementScreenState extends State<TenantManagementScreen> {
   void initState() {
     super.initState();
     _storage = SecureStorageService();
-    _notifier = context.read<TenantNotifier>();
+    _notifier = ProviderScope.containerOf(context, listen: false).read(tenantProvider.notifier);
     _loadTenants();
   }
 

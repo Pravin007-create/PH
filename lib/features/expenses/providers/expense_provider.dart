@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:pg_hostel_management/features/expenses/models/expense.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/securestorage/securestorage_service.dart';
+import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
 
 final expenseProvider = StateNotifierProvider<ExpenseNotifier, List<Expense>>((ref) {
   final storage = SecureStorageService();
@@ -20,7 +22,7 @@ class ExpenseNotifier extends StateNotifier<List<Expense>> {
   void updateExpense(Expense expense) {
     final index = state.indexWhere((e) => e.description == expense.description);
     if (index >= 0) {
-      state = [...state..index = expense];
+      state = [...state]..[index] = expense;
       _saveExpenses();
     }
   }
@@ -44,6 +46,6 @@ class ExpenseNotifier extends StateNotifier<List<Expense>> {
 
   void _saveExpenses() {
     final expenseData = state.map((expense) => expense.toMap()).toList();
-    _storage.write(key: 'saved_expenses', value: expenseData.toString());
+    _storage.write(key: 'saved_expenses', value: jsonEncode(expenseData));
   }
 }

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
+import 'package:pg_hostel_management/core/constants/app_constants.dart';
+import 'package:pg_hostel_management/core/utils/validation_utils.dart';
+import 'package:pg_hostel_management/features/room_management/providers/room_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pg_hostel_management/features/room_management/models/room.dart';
 import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
-import 'package:pg_hostel_management/core/router/app_router.dart';
 
 class RoomManagementScreen extends StatefulWidget {
   const RoomManagementScreen({super.key});
@@ -27,7 +29,7 @@ class _RoomManagementScreenState extends State<RoomManagementScreen> {
   void initState() {
     super.initState();
     _storage = SecureStorageService();
-    _notifier = context.read<RoomNotifier>();
+    _notifier = ProviderScope.containerOf(context, listen: false).read(roomProvider.notifier);
     _loadRooms();
   }
 
@@ -106,7 +108,7 @@ class _RoomManagementScreenState extends State<RoomManagementScreen> {
                     labelText: 'Monthly Rent',
                     border: OutlineInputBorder(),
                   ),
-                  keyboardType: const TextInputType WithOptions<TextInputType.number>(),
+                  keyboardType: TextInputType.number,
                   validator: (value) =>
                       ValidationUtils.validateRentAmount(value),
                 ),

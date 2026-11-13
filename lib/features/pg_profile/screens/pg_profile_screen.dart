@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/theme/app_theme.dart';
+import 'package:pg_hostel_management/core/utils/validation_utils.dart';
+import 'package:pg_hostel_management/features/pg_profile/providers/pg_profile_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pg_hostel_management/features/pg_profile/models/pg_profile.dart';
 import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
 
@@ -25,7 +27,7 @@ class _PGProfileScreenState extends State<PGProfileScreen> {
   void initState() {
     super.initState();
     _storage = SecureStorageService();
-    _notifier = context.read<PGProfileNotifier>();
+    _notifier = ProviderScope.containerOf(context, listen: false).read(pgProfileProvider.notifier);
     _loadInitialData();
   }
 
@@ -56,7 +58,7 @@ class _PGProfileScreenState extends State<PGProfileScreen> {
     _pgNameController.text = profile.pgName;
     _addressController.text = profile.address;
     _mobileNumberController.text = profile.mobileNumber;
-    _emailController.text = profile.email ?? '';
+    _emailController.text = profile.email;
   }
 
   @override

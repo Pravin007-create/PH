@@ -1,3 +1,5 @@
+import 'package:pg_hostel_management/features/bed_management/models/bed.dart';
+
 class AppConstants {
   static const String appName = 'PG Hostel Manager';
   static const String version = '1.0.0';
