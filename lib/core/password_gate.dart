@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:pg_hostel_management/core/securestorage/securestorage_service.dart';
-import 'package:pg_hostel_management/core/router.dart';
+
+import 'router.dart';
+import 'securestorage/securestorage_service.dart';
 
 const developerPassword = 'R@kshu@263108##';
 
@@ -14,117 +15,124 @@ class PasswordGate extends StatefulWidget {
 class _PasswordGateState extends State<PasswordGate> {
   final _formKey = GlobalKey<FormState>();
   final _passwordController = TextEditingController();
+  bool _obscure = true;
   bool _isLoading = false;
 
-  Future<void> _verifyAndProceed() async {
-    if (!_formKey.currentState!.validate()) return;
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    super.dispose();
+  }
 
+  Future<void> _unlock() async {
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
-    // Compare entered password with developer password
-    final enteredPassword = _passwordController.text;
-    final isCorrect = enteredPassword == developerPassword;
-
-    if (isCorrect) {
-      // Save that password has been verified
-      await SecureStorageService().write(
-        key: 'developer_password_verified',
-        value: 'true',
-      );
-
-      // Proceed to normal app flow
-      if (!mounted) return;
+    if (_passwordController.text == developerPassword) {
+      await SecureStorageService()
+          .write(key: 'developer_password_verified', value: 'true');
       AuthState.passwordVerified = true;
-      context.go('/');
-    } else {
-      // Show error and allow retry
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Invalid developer password. Access denied.'),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
+      if (mounted) context.go('/home');
+      return;
     }
 
-    if (mounted) setState(() => _isLoading = false);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Wrong password. Please try again.'),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('PG Hostel Manager'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.lock_outline,
-                  size: 80,
-                  color: Color(0xFF1976D2),
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'PG Hostel Manager',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Enter Developer Password',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                TextFormField(
-                  controller: _passwordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Developer Password',
-                    hintText: 'Enter password to access app',
-                    border: OutlineInputBorder(),
-                    suffixIcon: Icon(Icons.remove_red_eye),
-                  ),
-                  obscureText: true,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Password is required';
-                    }
-                    if (value.length < 8) {
-                      return 'Password must be at least 8 characters';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 32),
-                _isLoading
-                    ? const CircularProgressIndicator()
-                    : ElevatedButton(
-                        onPressed: _verifyAndProceed,
-                        child: const Text('Unlock Application'),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [scheme.primary, scheme.tertiary],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          CircleAvatar(
+                            radius: 36,
+                            backgroundColor: scheme.primaryContainer,
+                            child: Icon(Icons.apartment_rounded,
+                                size: 36, color: scheme.primary),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'PG Hostel Manager',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context)
+                                .textTheme
+                                .headlineSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Enter the app password to continue',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          ),
+                          const SizedBox(height: 24),
+                          TextFormField(
+                            controller: _passwordController,
+                            obscureText: _obscure,
+                            onFieldSubmitted: (_) => _unlock(),
+                            decoration: InputDecoration(
+                              labelText: 'Password',
+                              prefixIcon: const Icon(Icons.lock_outline_rounded),
+                              suffixIcon: IconButton(
+                                tooltip: _obscure ? 'Show password' : 'Hide password',
+                                icon: Icon(_obscure
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined),
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
+                              ),
+                            ),
+                            validator: (v) => (v == null || v.isEmpty)
+                                ? 'Please enter the password'
+                                : null,
+                          ),
+                          const SizedBox(height: 20),
+                          FilledButton.icon(
+                            onPressed: _isLoading ? null : _unlock,
+                            icon: _isLoading
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2))
+                                : const Icon(Icons.lock_open_rounded),
+                            label: const Text('Unlock'),
+                          ),
+                        ],
                       ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Password is set by developer and stored securely after entry',
-                  style: TextStyle(fontSize: 10, color: Colors.grey),
-                  textAlign: TextAlign.center,
+                    ),
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
         ),

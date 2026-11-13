@@ -1,45 +1,100 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:pg_hostel_management/core/password_gate.dart';
-import 'package:pg_hostel_management/features/activation/screens/activation_screen.dart';
-import 'package:pg_hostel_management/features/backup_restore/screens/backup_restore_screen.dart';
-import 'package:pg_hostel_management/features/bed_management/screens/bed_management_screen.dart';
-import 'package:pg_hostel_management/features/dashboard/screens/dashboard_screen.dart';
-import 'package:pg_hostel_management/features/electricity_bills/screens/electricity_bills_screen.dart';
-import 'package:pg_hostel_management/features/expenses/screens/expenses_screen.dart';
-import 'package:pg_hostel_management/features/home/home_screen.dart';
-import 'package:pg_hostel_management/features/pg_profile/screens/pg_profile_screen.dart';
-import 'package:pg_hostel_management/features/rent_payment/screens/rent_payment_screen.dart';
-import 'package:pg_hostel_management/features/room_management/screens/room_management_screen.dart';
-import 'package:pg_hostel_management/features/tenant_management/screens/tenant_management_screen.dart';
+
+import '../features/expenses/expense_form_screen.dart';
+import '../features/expenses/expenses_screen.dart';
+import '../features/home/home_screen.dart';
+import '../features/more/more_screen.dart';
+import '../features/more/profile_screen.dart';
+import '../features/payments/payment_form_screen.dart';
+import '../features/payments/payments_screen.dart';
+import '../features/reports/reports_screen.dart';
+import '../features/rooms/room_form_screen.dart';
+import '../features/rooms/rooms_screen.dart';
+import '../features/shell/app_shell.dart';
+import '../features/tenants/tenant_form_screen.dart';
+import '../features/tenants/tenants_screen.dart';
+import 'password_gate.dart';
 
 export 'package:go_router/go_router.dart';
 
 /// Whether the developer password has been entered on this device.
-/// Set in main() from secure storage and by [PasswordGate] on success.
 class AuthState {
   static bool passwordVerified = false;
 }
 
-final GoRouter appRouter = GoRouter(
-  initialLocation: '/',
-  redirect: (context, state) {
-    final atGate = state.matchedLocation == '/password';
-    if (!AuthState.passwordVerified && !atGate) return '/password';
-    if (AuthState.passwordVerified && atGate) return '/';
-    return null;
-  },
-  routes: [
-    GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
-    GoRoute(path: '/password', builder: (context, state) => const PasswordGate()),
-    GoRoute(path: '/activation', builder: (context, state) => const ActivationScreen()),
-    GoRoute(path: '/pg-profile', builder: (context, state) => const PGProfileScreen()),
-    GoRoute(path: '/room-management', builder: (context, state) => const RoomManagementScreen()),
-    GoRoute(path: '/bed-management', builder: (context, state) => const BedManagementScreen()),
-    GoRoute(path: '/tenant-management', builder: (context, state) => const TenantManagementScreen()),
-    GoRoute(path: '/rent-payment', builder: (context, state) => const RentPaymentScreen()),
-    GoRoute(path: '/electricity-bills', builder: (context, state) => const ElectricityBillsScreen()),
-    GoRoute(path: '/expenses', builder: (context, state) => const ExpensesScreen()),
-    GoRoute(path: '/dashboard', builder: (context, state) => const DashboardScreen()),
-    GoRoute(path: '/backup-restore', builder: (context, state) => const BackupRestoreScreen()),
-  ],
-);
+final _rootKey = GlobalKey<NavigatorState>();
+
+GoRouter buildRouter() => GoRouter(
+      navigatorKey: _rootKey,
+      initialLocation: '/home',
+      redirect: (context, state) {
+        final atGate = state.matchedLocation == '/password';
+        if (!AuthState.passwordVerified && !atGate) return '/password';
+        if (AuthState.passwordVerified && atGate) return '/home';
+        if (state.matchedLocation == '/') return '/home';
+        return null;
+      },
+      routes: [
+        GoRoute(path: '/', redirect: (_, __) => '/home'),
+        GoRoute(path: '/password', builder: (_, __) => const PasswordGate()),
+
+        // Main tabs (bottom navigation bar).
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, shell) => AppShell(shell: shell),
+          branches: [
+            StatefulShellBranch(routes: [
+              GoRoute(path: '/home', builder: (_, __) => const HomeScreen()),
+            ]),
+            StatefulShellBranch(routes: [
+              GoRoute(path: '/rooms', builder: (_, __) => const RoomsScreen()),
+            ]),
+            StatefulShellBranch(routes: [
+              GoRoute(
+                  path: '/tenants', builder: (_, __) => const TenantsScreen()),
+            ]),
+            StatefulShellBranch(routes: [
+              GoRoute(
+                  path: '/payments',
+                  builder: (_, __) => const PaymentsScreen()),
+            ]),
+            StatefulShellBranch(routes: [
+              GoRoute(path: '/more', builder: (_, __) => const MoreScreen()),
+            ]),
+          ],
+        ),
+
+        // Full-screen pages opened on top of the tabs (Back returns).
+        GoRoute(path: '/rooms/new', builder: (_, __) => const RoomFormScreen()),
+        GoRoute(
+            path: '/rooms/:id',
+            builder: (_, s) => RoomFormScreen(roomId: s.pathParameters['id'])),
+        GoRoute(
+            path: '/tenants/new',
+            builder: (_, s) =>
+                TenantFormScreen(roomId: s.uri.queryParameters['room'])),
+        GoRoute(
+            path: '/tenants/:id',
+            builder: (_, s) =>
+                TenantFormScreen(tenantId: s.pathParameters['id'])),
+        GoRoute(
+            path: '/payments/new',
+            builder: (_, s) =>
+                PaymentFormScreen(tenantId: s.uri.queryParameters['tenant'])),
+        GoRoute(
+            path: '/payments/:id',
+            builder: (_, s) =>
+                PaymentFormScreen(paymentId: s.pathParameters['id'])),
+        GoRoute(
+            path: '/expenses', builder: (_, __) => const ExpensesScreen()),
+        GoRoute(
+            path: '/expenses/new',
+            builder: (_, __) => const ExpenseFormScreen()),
+        GoRoute(
+            path: '/expenses/:id',
+            builder: (_, s) =>
+                ExpenseFormScreen(expenseId: s.pathParameters['id'])),
+        GoRoute(path: '/reports', builder: (_, __) => const ReportsScreen()),
+        GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
+      ],
+    );

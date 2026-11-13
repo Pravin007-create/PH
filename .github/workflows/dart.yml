@@ -27,7 +27,6 @@ jobs:
         run: |
           if [ ! -d android ]; then
             flutter create --platforms=android --project-name pg_hostel_management --org com.pghostel .
-            rm -f test/widget_test.dart
           fi
 
       - name: Install dependencies
@@ -35,6 +34,9 @@ jobs:
 
       - name: Check Flutter code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run tests
+        run: flutter test
 
       - name: Build Android APK
         run: flutter build apk --release

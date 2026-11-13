@@ -18,18 +18,22 @@ dependencies:
   flutter_riverpod: ^2.5.1
 
   # Navigation
-  go_router: ^13.2.1
+  go_router: ^16.2.0
 
   # Secure Storage
   flutter_secure_storage: ^9.2.2
+
+  # Local data storage
+  shared_preferences: ^2.3.2
+
+  # PDF reports (generate + download/share)
+  pdf: ^3.11.1
+  printing: ^5.13.4
 
   # UI / utilities
   intl: any  # version is pinned by flutter_localizations
   equatable: ^2.0.5
 
-  # Add these back when the code actually uses them:
-  # drift, sqflite, path_provider, pdf, printing, csv,
-  # flutter_local_notifications, connectivity_plus, shared_preferences
 
 dev_dependencies:
   flutter_test:
