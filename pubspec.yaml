@@ -34,8 +34,8 @@ dependencies:
   intl: any  # version is pinned by flutter_localizations
   equatable: ^2.0.5
   share_plus: ^12.0.2
-  file_picker: ^11.0.3
   path_provider: ^2.1.6
+  file_selector: ^1.1.0
 
 
 dev_dependencies:

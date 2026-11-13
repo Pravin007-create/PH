@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -44,13 +44,10 @@ class MoreScreen extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     final String json;
     try {
-      final picked = await FilePicker.pickFiles(withData: true);
-      if (picked == null || picked.files.isEmpty) return;
-      final f = picked.files.single;
-      final bytes = f.bytes ??
-          (f.path == null ? null : await File(f.path!).readAsBytes());
-      if (bytes == null) throw BackupException('Could not read the file.');
-      json = utf8.decode(bytes);
+      // No type filter: some phones don't tag .json files correctly.
+      final file = await openFile();
+      if (file == null) return;
+      json = utf8.decode(await file.readAsBytes());
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
       return;
