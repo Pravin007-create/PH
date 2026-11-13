@@ -81,6 +81,18 @@ final expensesProvider =
       (e) => e.toJson(), (e) => e.id),
 );
 
+final deletedPaymentsProvider =
+    StateNotifierProvider<ListStore<DeletedPayment>, List<DeletedPayment>>(
+  (ref) => ListStore(ref.watch(prefsProvider), 'deleted_payments',
+      DeletedPayment.fromJson, (d) => d.toJson(), (d) => d.id),
+);
+
+final electricityBillsProvider =
+    StateNotifierProvider<ListStore<ElectricityBill>, List<ElectricityBill>>(
+  (ref) => ListStore(ref.watch(prefsProvider), 'electricity_bills',
+      ElectricityBill.fromJson, (b) => b.toJson(), (b) => b.id),
+);
+
 class ProfileStore extends StateNotifier<PgProfile> {
   ProfileStore(this._prefs) : super(_load(_prefs));
   final SharedPreferences _prefs;

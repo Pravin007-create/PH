@@ -20,11 +20,15 @@ const _quickDeductions = [
 ];
 
 class _DeductionRow {
-  _DeductionRow([String label = '', String amount = ''])
+  _DeductionRow([String label = '', String amount = '', this.type, this.month])
       : label = TextEditingController(text: label),
         amount = TextEditingController(text: amount);
   final TextEditingController label;
   final TextEditingController amount;
+
+  /// Set for pending electricity, so it is recorded as an electricity payment.
+  final PaymentType? type;
+  final DateTime? month;
 
   void dispose() {
     label.dispose();
@@ -48,7 +52,14 @@ class _MoveOutScreenState extends ConsumerState<MoveOutScreen> {
   late final _deposit = TextEditingController(
       text: _tenant.deposit == 0 ? '' : _tenant.deposit.toStringAsFixed(0));
   final _collected = TextEditingController();
-  final _rows = <_DeductionRow>[];
+  late final _rows = <_DeductionRow>[
+    // Pending electricity shares are added automatically.
+    for (final d in ref
+        .read(electricityDuesProvider)
+        .where((d) => d.tenant.id == widget.tenantId))
+      _DeductionRow('Electricity ${fmtMonthShort(d.month)}',
+          d.due.toStringAsFixed(0), PaymentType.electricity, d.month),
+  ];
 
   /// Rent months the owner chose not to charge.
   final _waived = <DateTime>{};
@@ -70,7 +81,9 @@ class _MoveOutScreenState extends ConsumerState<MoveOutScreen> {
           if (_num(r.amount) > 0)
             Deduction(
                 r.label.text.trim().isEmpty ? 'Other' : r.label.text.trim(),
-                _num(r.amount)),
+                _num(r.amount),
+                type: r.type,
+                month: r.month),
       ];
 
   void _addRow([String label = '']) =>

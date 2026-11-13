@@ -12,7 +12,7 @@ import '../../widgets/common.dart';
 import '../../widgets/due_chip.dart';
 import '../reports/report_builder.dart';
 
-/// Add a tenant ([tenantId] == null) or view/edit an existing one.
+/// Add a tenant ([tenantId] == null), or view one with an Edit button.
 class TenantFormScreen extends ConsumerStatefulWidget {
   const TenantFormScreen({super.key, this.tenantId, this.roomId});
   final String? tenantId;
@@ -42,6 +42,23 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
 
   bool get _isEdit => _existing != null;
 
+  /// Existing tenant: false = view mode, true = editing.
+  bool _editing = false;
+
+  void _cancelEdit() {
+    final t = ref.read(tenantsProvider.notifier).byId(_existing!.id)!;
+    setState(() {
+      _name.text = t.name;
+      _phone.text = t.phone;
+      _rent.text = t.rent.toStringAsFixed(0);
+      _deposit.text = t.deposit == 0 ? '' : t.deposit.toStringAsFixed(0);
+      _notes.text = t.notes;
+      _roomId = t.roomId;
+      _joinDate = t.joinDate;
+      _editing = false;
+    });
+  }
+
   String _rentForRoom(String? roomId) {
     final room = ref.read(roomsProvider.notifier).byId(roomId);
     return room == null ? '' : room.rent.toStringAsFixed(0);
@@ -68,13 +85,17 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
       joinDate: _joinDate,
       leaveDate: live?.leaveDate,
       notes: _notes.text.trim(),
-      createdAt: _existing?.createdAt ?? DateTime.now(),
+      createdAt: live?.createdAt ?? DateTime.now(),
       settlement: live?.settlement,
     );
     ref.read(tenantsProvider.notifier).save(tenant);
-    showSaved(context,
-        _isEdit ? '${tenant.name} updated' : '${tenant.name} added');
-    context.pop();
+    if (_isEdit) {
+      showSaved(context, '${tenant.name} updated');
+      setState(() => _editing = false);
+    } else {
+      showSaved(context, '${tenant.name} added');
+      context.pop();
+    }
   }
 
   Future<void> _toggleMoveOut() async {
@@ -112,134 +133,253 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
     final rooms = [...ref.watch(roomsProvider)]
       ..sort((a, b) => a.number.compareTo(b.number));
     final occupancy = occupancyByRoom(ref.watch(tenantsProvider));
+    final live = _isEdit
+        ? ref
+            .watch(tenantsProvider)
+            .where((t) => t.id == _existing!.id)
+            .firstOrNull
+        : null;
+    if (_isEdit && live == null) {
+      return Scaffold(
+          appBar: AppBar(),
+          body: const Center(child: Text('This tenant no longer exists.')));
+    }
+    final viewing = _isEdit && !_editing;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Tenant Details' : 'Add Tenant'),
-        actions: [
-          if (_isEdit)
-            IconButton(
-              tooltip: 'Delete tenant',
-              icon: const Icon(Icons.delete_outline_rounded),
-              onPressed: _delete,
-            ),
-        ],
-      ),
-      bottomNavigationBar: SaveBar(
-          label: _isEdit ? 'Save Changes' : 'Save Tenant', onPressed: _save),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          children: [
-            PageBody(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_isEdit) _TenantActions(tenant: _existing!, onMoveOut: _toggleMoveOut),
-                  const FormLabel('Personal details'),
-                  TextFormField(
-                    controller: _name,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: 'Full name *',
-                      prefixIcon: Icon(Icons.person_outline_rounded),
-                    ),
-                    validator: (v) => requiredField(v, 'name'),
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _phone,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: digitsOnly,
-                    maxLength: 10,
-                    decoration: const InputDecoration(
-                      labelText: 'Mobile number *',
-                      prefixText: '+91 ',
-                      prefixIcon: Icon(Icons.phone_outlined),
-                      counterText: '',
-                    ),
-                    validator: phoneField,
-                  ),
-                  const FormLabel('Room & rent'),
-                  DropdownButtonFormField<String?>(
-                    initialValue: rooms.any((r) => r.id == _roomId) ? _roomId : null,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: 'Room',
-                      prefixIcon: const Icon(Icons.meeting_room_outlined),
-                      helperText: rooms.isEmpty
-                          ? 'No rooms yet — add rooms from the Rooms tab'
-                          : null,
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                          value: null, child: Text('No room assigned')),
-                      for (final r in rooms)
-                        DropdownMenuItem(
-                          value: r.id,
-                          // A full room can still be chosen if it's this tenant's room.
-                          enabled: (occupancy[r.id] ?? 0) < r.beds ||
-                              r.id == _existing?.roomId,
-                          child: Text(
-                            'Room ${r.number}  ·  ${occupancy[r.id] ?? 0}/${r.beds} filled'
-                            '${(occupancy[r.id] ?? 0) >= r.beds && r.id != _existing?.roomId ? '  (full)' : ''}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                    ],
-                    onChanged: (v) => setState(() {
-                      _roomId = v;
-                      final rent = _rentForRoom(v);
-                      if (rent.isNotEmpty) _rent.text = rent;
-                    }),
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _rent,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: decimalOnly,
-                    decoration: const InputDecoration(
-                      labelText: 'Monthly rent *',
-                      prefixText: '₹ ',
-                      prefixIcon: Icon(Icons.currency_rupee_rounded),
-                    ),
-                    validator: (v) => amountField(v, 'monthly rent'),
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _deposit,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: decimalOnly,
-                    decoration: const InputDecoration(
-                      labelText: 'Security deposit (optional)',
-                      prefixText: '₹ ',
-                      prefixIcon: Icon(Icons.savings_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  DateField(
-                    label: 'Joining date',
-                    value: _joinDate,
-                    onChanged: (d) => setState(() => _joinDate = d),
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _notes,
-                    maxLines: 2,
-                    decoration: const InputDecoration(
-                      labelText: 'Notes (optional)',
-                      hintText: 'ID proof, emergency contact, etc.',
-                      prefixIcon: Icon(Icons.notes_rounded),
-                    ),
-                  ),
-                  if (_isEdit) _PaymentHistory(tenantId: _existing!.id),
-                ],
+    return PopScope(
+      // Back while editing = cancel editing, not leave the page.
+      canPop: !_editing,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _editing) _cancelEdit();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: _editing
+              ? IconButton(
+                  tooltip: 'Cancel editing',
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: _cancelEdit)
+              : null,
+          title: Text(!_isEdit
+              ? 'Add Tenant'
+              : _editing
+                  ? 'Edit Tenant'
+                  : 'Tenant Details'),
+          actions: [
+            if (viewing) ...[
+              TextButton.icon(
+                onPressed: () => setState(() => _editing = true),
+                icon: const Icon(Icons.edit_outlined, size: 18),
+                label: const Text('Edit'),
               ),
-            ),
+              IconButton(
+                tooltip: 'Delete tenant',
+                icon: const Icon(Icons.delete_outline_rounded),
+                onPressed: _delete,
+              ),
+            ],
           ],
         ),
+        bottomNavigationBar: viewing
+            ? null
+            : SaveBar(
+                label: _isEdit ? 'Save Changes' : 'Save Tenant',
+                onPressed: _save),
+        body: viewing
+            ? ListView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                children: [
+                  PageBody(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _TenantActions(
+                            tenant: live!, onMoveOut: _toggleMoveOut),
+                        _TenantInfo(tenant: live),
+                        _PaymentHistory(tenantId: live.id),
+                      ],
+                    ),
+                  ),
+                ],
+              )
+            : Form(
+                key: _formKey,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  children: [
+                    PageBody(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const FormLabel('Personal details'),
+                          TextFormField(
+                            controller: _name,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: const InputDecoration(
+                              labelText: 'Full name *',
+                              prefixIcon: Icon(Icons.person_outline_rounded),
+                            ),
+                            validator: (v) => requiredField(v, 'name'),
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _phone,
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: digitsOnly,
+                            maxLength: 10,
+                            decoration: const InputDecoration(
+                              labelText: 'Mobile number *',
+                              prefixText: '+91 ',
+                              prefixIcon: Icon(Icons.phone_outlined),
+                              counterText: '',
+                            ),
+                            validator: phoneField,
+                          ),
+                          const FormLabel('Room & rent'),
+                          DropdownButtonFormField<String?>(
+                            initialValue: rooms.any((r) => r.id == _roomId)
+                                ? _roomId
+                                : null,
+                            isExpanded: true,
+                            decoration: InputDecoration(
+                              labelText: 'Room',
+                              prefixIcon:
+                                  const Icon(Icons.meeting_room_outlined),
+                              helperText: rooms.isEmpty
+                                  ? 'No rooms yet — add rooms from the Rooms tab'
+                                  : null,
+                            ),
+                            items: [
+                              const DropdownMenuItem(
+                                  value: null, child: Text('No room assigned')),
+                              for (final r in rooms)
+                                DropdownMenuItem(
+                                  value: r.id,
+                                  // A full room can still be chosen if it's this tenant's room.
+                                  enabled: (occupancy[r.id] ?? 0) < r.beds ||
+                                      r.id == _existing?.roomId,
+                                  child: Text(
+                                    'Room ${r.number}  ·  ${occupancy[r.id] ?? 0}/${r.beds} filled'
+                                    '${(occupancy[r.id] ?? 0) >= r.beds && r.id != _existing?.roomId ? '  (full)' : ''}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (v) => setState(() {
+                              _roomId = v;
+                              final rent = _rentForRoom(v);
+                              if (rent.isNotEmpty) _rent.text = rent;
+                            }),
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _rent,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: decimalOnly,
+                            decoration: const InputDecoration(
+                              labelText: 'Monthly rent *',
+                              prefixText: '₹ ',
+                              prefixIcon: Icon(Icons.currency_rupee_rounded),
+                            ),
+                            validator: (v) => amountField(v, 'monthly rent'),
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _deposit,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: decimalOnly,
+                            decoration: const InputDecoration(
+                              labelText: 'Security deposit (optional)',
+                              prefixText: '₹ ',
+                              prefixIcon: Icon(Icons.savings_outlined),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          DateField(
+                            label: 'Joining date',
+                            value: _joinDate,
+                            onChanged: (d) => setState(() => _joinDate = d),
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _notes,
+                            maxLines: 2,
+                            decoration: const InputDecoration(
+                              labelText: 'Notes (optional)',
+                              hintText: 'ID proof, emergency contact, etc.',
+                              prefixIcon: Icon(Icons.notes_rounded),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
       ),
+    );
+  }
+}
+
+/// Read-only tenant details (view mode).
+class _TenantInfo extends ConsumerWidget {
+  const _TenantInfo({required this.tenant});
+  final Tenant tenant;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final room = ref
+        .watch(roomsProvider)
+        .where((r) => r.id == tenant.roomId)
+        .firstOrNull;
+    Widget info(IconData icon, String label, String value,
+            {VoidCallback? onTap}) =>
+        ListTile(
+          dense: true,
+          leading: Icon(icon),
+          title: Text(label),
+          onTap: onTap,
+          trailing: Text(value,
+              style:
+                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const FormLabel('Details'),
+        Card(
+          child: Column(children: [
+            ListTile(
+              leading: CircleAvatar(child: Text(initials(tenant.name))),
+              title: Text(tenant.name,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text('+91 ${tenant.phone}'),
+            ),
+            const Divider(height: 1),
+            info(Icons.meeting_room_outlined, 'Room',
+                room == null ? 'Not assigned' : 'Room ${room.number}',
+                onTap: room == null
+                    ? null
+                    : () => context.push('/rooms/${room.id}')),
+            info(Icons.currency_rupee_rounded, 'Monthly rent',
+                money(tenant.rent)),
+            info(Icons.savings_outlined, 'Security deposit',
+                tenant.deposit == 0 ? '—' : money(tenant.deposit)),
+            info(Icons.calendar_today_rounded, 'Joined',
+                fmtDate(tenant.joinDate)),
+            if (tenant.leaveDate != null)
+              info(Icons.logout_rounded, 'Moved out',
+                  fmtDate(tenant.leaveDate!)),
+            if (tenant.notes.isNotEmpty)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.notes_rounded),
+                title: const Text('Notes'),
+                subtitle: Text(tenant.notes),
+              ),
+          ]),
+        ),
+      ],
     );
   }
 }
@@ -264,6 +404,10 @@ class _TenantActions extends ConsumerWidget {
         .watch(overdueProvider)
         .where((d) => d.tenant.id == tenant.id && !sameMonth(d.month, month))
         .toList();
+    final power = ref
+        .watch(electricityDuesProvider)
+        .where((d) => d.tenant.id == tenant.id)
+        .toList();
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Card(
@@ -286,7 +430,8 @@ class _TenantActions extends ConsumerWidget {
               ]),
               if (due != null && !due.isPaid && tenant.isActive) ...[
                 const SizedBox(height: 4),
-                Text('${money(due.due)} to pay · due by ${fmtDate(due.dueDate)}',
+                Text(
+                    '${money(due.due)} to pay · due by ${fmtDate(due.dueDate)}',
                     style: Theme.of(context).textTheme.bodySmall),
               ],
               for (final d in olderOverdue)
@@ -309,6 +454,29 @@ class _TenantActions extends ConsumerWidget {
                       const Text('Collect',
                           style: TextStyle(
                               color: Color(0xFFDC2626),
+                              fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ),
+              for (final d in power)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: InkWell(
+                    onTap: () => context.push(
+                        '/payments/new?tenant=${tenant.id}&type=electricity&month=${d.month.toIso8601String()}'),
+                    child: Row(children: [
+                      const Icon(Icons.bolt_rounded,
+                          size: 18, color: AppColors.warning),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                            'Electricity ${fmtMonthShort(d.month)}: ${money(d.due)} pending',
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                      Text('Collect',
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
                               fontWeight: FontWeight.w700)),
                     ]),
                   ),
@@ -342,8 +510,7 @@ class _TenantActions extends ConsumerWidget {
                   ),
                 ),
               ]),
-              if (tenant.settlement != null)
-                _SettlementSummary(tenant: tenant),
+              if (tenant.settlement != null) _SettlementSummary(tenant: tenant),
             ],
           ),
         ),
@@ -407,7 +574,8 @@ class _SettlementSummary extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(children: [
             Expanded(child: Text(a)),
-            Text(b, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+            Text(b,
+                style: TextStyle(color: color, fontWeight: FontWeight.w600)),
           ]),
         );
     const red = Color(0xFFDC2626);
@@ -421,7 +589,8 @@ class _SettlementSummary extends ConsumerWidget {
               style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           line('Advance held', money(s.deposit)),
-          if (s.collectedNow > 0) line('+ Cash collected', money(s.collectedNow)),
+          if (s.collectedNow > 0)
+            line('+ Cash collected', money(s.collectedNow)),
           if (s.rentAdjusted > 0)
             line('− Rent (${s.rentMonths.join(', ')})', money(s.rentAdjusted),
                 color: red),

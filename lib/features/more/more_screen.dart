@@ -1,35 +1,75 @@
-import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'dart:convert';
+import 'dart:io';
 
-import '../../core/router.dart';
-import '../../core/securestorage/securestorage_service.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../../core/format.dart';
 import '../../core/theme.dart';
+import '../../data/backup.dart';
+import '../../data/store.dart';
 import '../../widgets/common.dart';
 
-class MoreScreen extends StatelessWidget {
+class MoreScreen extends ConsumerWidget {
   const MoreScreen({super.key});
 
-  Future<void> _lock(BuildContext context) async {
-    final ok = await confirmDialog(context,
-        title: 'Lock the app?',
-        message: 'You will need the app password to open it again.',
-        confirmLabel: 'Lock',
-        destructive: false);
-    if (!ok) return;
-    await SecureStorageService().delete(key: 'developer_password_verified');
-    AuthState.passwordVerified = false;
-    if (context.mounted) context.go('/password');
+  Future<void> _export(BuildContext context, WidgetRef ref) async {
+    final json = exportBackup(ref.read(prefsProvider));
+    final stamp = DateTime.now();
+    final name = 'PG_backup_${stamp.year}-${_two(stamp.month)}-'
+        '${_two(stamp.day)}_${_two(stamp.hour)}${_two(stamp.minute)}.json';
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$name');
+      await file.writeAsString(json);
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path, mimeType: 'application/json', name: name)],
+        subject: 'PG Hostel backup',
+        text: 'PG Hostel backup – keep this file safe. '
+            'Use "Import data" in the app to restore it.',
+      ));
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not export data: $e')));
+      }
+    }
+  }
+
+  Future<void> _import(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final String json;
+    try {
+      final picked = await FilePicker.pickFiles(withData: true);
+      if (picked == null || picked.files.isEmpty) return;
+      final f = picked.files.single;
+      final bytes = f.bytes ??
+          (f.path == null ? null : await File(f.path!).readAsBytes());
+      if (bytes == null) throw BackupException('Could not read the file.');
+      json = utf8.decode(bytes);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      return;
+    }
+    if (!context.mounted) return;
+    await importFromJson(context, ref, json);
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final deleted = ref.watch(deletedPaymentsProvider).length;
     Widget tile(IconData icon, Color color, String title, String sub,
             VoidCallback onTap) =>
         ListTile(
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           leading: IconBadge(icon: icon, color: color),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+          title:
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(sub),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: onTap,
@@ -46,26 +86,64 @@ class MoreScreen extends StatelessWidget {
               children: [
                 Card(
                   child: Column(children: [
-                    tile(Icons.download_rounded, AppColors.seed, 'Reports',
+                    tile(
+                        Icons.download_rounded,
+                        AppColors.seed,
+                        'Reports',
                         'Download monthly PDF reports',
                         () => context.push('/reports')),
                     const Divider(height: 1),
-                    tile(Icons.receipt_long_rounded, AppColors.pink, 'Expenses',
+                    tile(
+                        Icons.receipt_long_rounded,
+                        AppColors.pink,
+                        'Expenses',
                         'Electricity, water, salary and more',
                         () => context.push('/expenses')),
+                    const Divider(height: 1),
+                    tile(
+                        Icons.history_rounded,
+                        AppColors.info,
+                        'Deleted payments',
+                        deleted == 0
+                            ? 'Log of deleted payments'
+                            : '$deleted deleted payment${deleted == 1 ? '' : 's'}',
+                        () => context.push('/payments/deleted')),
                   ]),
                 ),
                 const SizedBox(height: 12),
                 Card(
+                  child: tile(
+                      Icons.storefront_rounded,
+                      AppColors.warning,
+                      'PG details',
+                      'Name, owner, phone, rent collection',
+                      () => context.push('/profile')),
+                ),
+                const SectionHeader('Backup & restore'),
+                Card(
                   child: Column(children: [
-                    tile(Icons.storefront_rounded, AppColors.warning,
-                        'PG details', 'Name, owner, phone and address',
-                        () => context.push('/profile')),
+                    tile(
+                        Icons.upload_file_rounded,
+                        AppColors.success,
+                        'Export all data',
+                        'Save rooms, tenants, payments & expenses to a file',
+                        () => _export(context, ref)),
                     const Divider(height: 1),
-                    tile(Icons.lock_outline_rounded, AppColors.info,
-                        'Lock app', 'Ask for password next time',
-                        () => _lock(context)),
+                    tile(
+                        Icons.file_download_outlined,
+                        AppColors.purple,
+                        'Import data',
+                        'Restore from an exported backup file',
+                        () => _import(context, ref)),
                   ]),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                  child: Text(
+                    'Data is stored only on this phone. Export regularly and '
+                    'keep the file in Google Drive, WhatsApp or email.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 Text('PG Hostel Manager · v1.0.0',
@@ -77,5 +155,48 @@ class MoreScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+String _two(int n) => n.toString().padLeft(2, '0');
+
+/// Shows what's in the backup, asks to confirm, then replaces all data.
+Future<void> importFromJson(
+    BuildContext context, WidgetRef ref, String json) async {
+  final BackupSummary summary;
+  try {
+    summary = readBackup(json);
+  } on BackupException catch (e) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(e.message)));
+    return;
+  }
+  final ok = await confirmDialog(
+    context,
+    title: 'Replace all data?',
+    message: [
+      if (summary.pgName.isNotEmpty) summary.pgName,
+      if (summary.exportedAt != null)
+        'Backup from ${fmtDate(summary.exportedAt!)}',
+      '${summary.rooms} rooms · ${summary.tenants} tenants · '
+          '${summary.payments} payments · ${summary.expenses} expenses',
+      '',
+      'Everything currently in the app will be replaced by this backup.',
+    ].join('\n'),
+    confirmLabel: 'Import',
+  );
+  if (!ok || !context.mounted) return;
+  await importBackup(ref.read(prefsProvider), json);
+  ref
+    ..invalidate(roomsProvider)
+    ..invalidate(tenantsProvider)
+    ..invalidate(paymentsProvider)
+    ..invalidate(expensesProvider)
+    ..invalidate(deletedPaymentsProvider)
+    ..invalidate(electricityBillsProvider)
+    ..invalidate(profileProvider);
+  if (context.mounted) {
+    showSaved(context,
+        'Data imported · ${summary.rooms} rooms, ${summary.tenants} tenants');
   }
 }

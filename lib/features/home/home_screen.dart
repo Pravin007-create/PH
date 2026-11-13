@@ -32,6 +32,7 @@ class HomeScreen extends ConsumerWidget {
     final unpaid = s.unpaid;
     // Overdue (any month, oldest first), then this rent month's due/upcoming.
     final pending = [...overdue, ...unpaid.where((d) => !d.isOverdue)];
+    final power = ref.watch(electricityDuesProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -155,6 +156,31 @@ class HomeScreen extends ConsumerWidget {
                         ],
                       ]),
                     ),
+
+                  if (power.isNotEmpty) ...[
+                    SectionHeader(
+                        'Electricity to collect · ${money(power.fold<double>(0, (a, d) => a + d.due))}'),
+                    Card(
+                      child: Column(children: [
+                        for (final d in power.take(6)) ...[
+                          if (d != power.first) const Divider(height: 1),
+                          ListTile(
+                            leading: const IconBadge(
+                                icon: Icons.bolt_rounded,
+                                color: AppColors.warning),
+                            title: Text(d.tenant.name),
+                            subtitle: Text(
+                                'Room ${rooms.where((r) => r.id == d.bill.roomId).firstOrNull?.number ?? '-'} · ${fmtMonthShort(d.month)}'),
+                            trailing: TextButton(
+                              onPressed: () => context.push(
+                                  '/payments/new?tenant=${d.tenant.id}&type=electricity&month=${d.month.toIso8601String()}'),
+                              child: Text('Collect ${money(d.due)}'),
+                            ),
+                          ),
+                        ],
+                      ]),
+                    ),
+                  ],
 
                   SectionHeader('Recent payments',
                       action: payments.isEmpty ? null : 'See all',

@@ -34,7 +34,13 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
       ..sort((a, b) => b.date.compareTo(a.date));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Payments')),
+      appBar: AppBar(title: const Text('Payments'), actions: [
+        IconButton(
+          tooltip: 'Deleted payments',
+          icon: const Icon(Icons.history_rounded),
+          onPressed: () => context.push('/payments/deleted'),
+        ),
+      ]),
       floatingActionButton: AddButton(
         label: 'Record Payment',
         onPressed: () => context.push('/payments/new'),
@@ -89,7 +95,8 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                       icon: Icons.check_circle_rounded,
                       label: 'Rent collected',
                       value: money(s.rentCollected),
-                      caption: '${(s.collectionRate * 100).round()}% of ${money(s.rentExpected)}',
+                      caption:
+                          '${(s.collectionRate * 100).round()}% of ${money(s.rentExpected)}',
                       color: AppColors.success,
                     ),
                   ),
@@ -148,7 +155,8 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 4),
                         onTap: () => context.push('/tenants/${d.tenant.id}'),
-                        leading: CircleAvatar(child: Text(initials(d.tenant.name))),
+                        leading:
+                            CircleAvatar(child: Text(initials(d.tenant.name))),
                         title: Text(d.tenant.name,
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         isThreeLine: true,

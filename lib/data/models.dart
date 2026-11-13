@@ -9,6 +9,9 @@ class Room {
   /// Default monthly rent per bed (pre-fills new tenants in this room).
   final double rent;
   final bool isAC;
+
+  /// Electricity is billed separately and split between the room's tenants.
+  final bool separateElectricity;
   final String notes;
 
   const Room({
@@ -18,12 +21,14 @@ class Room {
     required this.beds,
     required this.rent,
     this.isAC = false,
+    this.separateElectricity = false,
     this.notes = '',
   });
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'number': number,
+        'separateElectricity': separateElectricity,
         'floor': floor,
         'beds': beds,
         'rent': rent,
@@ -38,15 +43,21 @@ class Room {
         beds: (j['beds'] as num).toInt(),
         rent: (j['rent'] as num).toDouble(),
         isAC: (j['isAC'] ?? false) as bool,
+        separateElectricity: (j['separateElectricity'] ?? false) as bool,
         notes: (j['notes'] ?? '') as String,
       );
 }
 
 /// One deduction line at move-out (cleaning, damage, ...).
 class Deduction {
-  const Deduction(this.label, this.amount);
+  const Deduction(this.label, this.amount, {this.type, this.month});
   final String label;
   final double amount;
+
+  /// Recorded as this payment type / month (e.g. an electricity share).
+  /// Defaults to "Other" in the move-out month.
+  final PaymentType? type;
+  final DateTime? month;
 
   Map<String, dynamic> toJson() => {'label': label, 'amount': amount};
   factory Deduction.fromJson(Map<String, dynamic> j) =>
@@ -187,8 +198,7 @@ class Tenant {
         leaveDate: clearLeaveDate ? null : (leaveDate ?? this.leaveDate),
         notes: notes,
         createdAt: createdAt,
-        settlement:
-            clearSettlement ? null : (settlement ?? this.settlement),
+        settlement: clearSettlement ? null : (settlement ?? this.settlement),
       );
 
   Map<String, dynamic> toJson() => {
@@ -291,6 +301,89 @@ class Payment {
       );
 }
 
+/// A payment that was deleted, kept as a log entry.
+class DeletedPayment {
+  const DeletedPayment({
+    required this.payment,
+    required this.deletedAt,
+    this.tenantName = '',
+    this.reason = '',
+  });
+
+  final Payment payment;
+  final DateTime deletedAt;
+
+  /// Saved in case the tenant is deleted later.
+  final String tenantName;
+  final String reason;
+
+  String get id => payment.id;
+
+  Map<String, dynamic> toJson() => {
+        'payment': payment.toJson(),
+        'deletedAt': deletedAt.toIso8601String(),
+        'tenantName': tenantName,
+        'reason': reason,
+      };
+
+  factory DeletedPayment.fromJson(Map<String, dynamic> j) => DeletedPayment(
+        payment:
+            Payment.fromJson(Map<String, dynamic>.from(j['payment'] as Map)),
+        deletedAt: DateTime.parse(j['deletedAt'] as String),
+        tenantName: (j['tenantName'] ?? '') as String,
+        reason: (j['reason'] ?? '') as String,
+      );
+}
+
+/// A room's electricity bill for one month, split equally between the
+/// tenants staying in the room.
+class ElectricityBill {
+  const ElectricityBill({
+    required this.id,
+    required this.roomId,
+    required this.month,
+    required this.amount,
+    required this.tenantIds,
+    this.units = 0,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String roomId;
+
+  /// First day of the month the bill is for.
+  final DateTime month;
+  final double amount;
+
+  /// Units consumed (optional, for reference).
+  final double units;
+  final List<String> tenantIds;
+  final DateTime createdAt;
+
+  /// Each tenant's share.
+  double get share => tenantIds.isEmpty ? 0 : amount / tenantIds.length;
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'roomId': roomId,
+        'month': month.toIso8601String(),
+        'amount': amount,
+        'units': units,
+        'tenantIds': tenantIds,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory ElectricityBill.fromJson(Map<String, dynamic> j) => ElectricityBill(
+        id: j['id'] as String,
+        roomId: j['roomId'] as String,
+        month: DateTime.parse(j['month'] as String),
+        amount: (j['amount'] as num).toDouble(),
+        units: ((j['units'] ?? 0) as num).toDouble(),
+        tenantIds: List<String>.from((j['tenantIds'] ?? const []) as List),
+        createdAt: DateTime.parse(j['createdAt'] as String),
+      );
+}
+
 const expenseCategories = [
   'Electricity',
   'Water',
@@ -386,8 +479,7 @@ class PgProfile {
         ownerName: (j['ownerName'] ?? '') as String,
         phone: (j['phone'] ?? '') as String,
         address: (j['address'] ?? '') as String,
-        rentCycle: RentCycle.values.firstWhere(
-            (c) => c.name == j['rentCycle'],
+        rentCycle: RentCycle.values.firstWhere((c) => c.name == j['rentCycle'],
             orElse: () => RentCycle.monthStart),
         dueDays: ((j['dueDays'] ?? 5) as num).toInt().clamp(1, 28),
       );

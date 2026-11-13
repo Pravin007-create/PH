@@ -8,12 +8,14 @@ import '../../data/models.dart';
 import '../../data/store.dart';
 import '../../widgets/common.dart';
 
-/// Record a payment ([paymentId] == null) or edit an existing one.
+/// Record a new payment. Saved payments can't be edited, only deleted
+/// (see PaymentDetailScreen).
 class PaymentFormScreen extends ConsumerStatefulWidget {
-  const PaymentFormScreen(
-      {super.key, this.paymentId, this.tenantId, this.month});
-  final String? paymentId;
+  const PaymentFormScreen({super.key, this.tenantId, this.month, this.type});
   final String? tenantId;
+
+  /// Pre-selected type (e.g. electricity from a room bill).
+  final PaymentType? type;
 
   /// Rent month to pay for (e.g. an older overdue month).
   final DateTime? month;
@@ -24,44 +26,44 @@ class PaymentFormScreen extends ConsumerStatefulWidget {
 
 class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
   final _formKey = GlobalKey<FormState>();
-  late final Payment? _existing =
-      ref.read(paymentsProvider.notifier).byId(widget.paymentId);
-  late String? _tenantId = _existing?.tenantId ?? widget.tenantId;
-  late PaymentType _type = _existing?.type ?? PaymentType.rent;
+  late String? _tenantId = widget.tenantId;
+  late PaymentType _type = widget.type ?? PaymentType.rent;
   // Defaults to the rent month being collected now (October on 3 Nov for an
   // end-of-month PG).
-  late DateTime _month = _existing?.month ??
+  late DateTime _month =
       (widget.month == null ? null : monthOf(widget.month!)) ??
-      ref.read(currentRentMonthProvider);
-  late DateTime _date = _existing?.date ?? DateTime.now();
-  late String _mode = _existing?.mode ?? 'Cash';
+          ref.read(currentRentMonthProvider);
+  DateTime _date = DateTime.now();
+  String _mode = 'Cash';
   late final TextEditingController _amount;
   late final TextEditingController _note;
 
   @override
   void initState() {
     super.initState();
-    _amount = TextEditingController(
-        text: _existing?.amount.toStringAsFixed(0) ?? _suggestedAmount());
-    _note = TextEditingController(text: _existing?.note);
+    _amount = TextEditingController(text: _suggestedAmount());
+    _note = TextEditingController();
   }
 
-  bool get _isEdit => _existing != null;
-
-  /// For rent: what's still due this month for the tenant.
+  /// Rent or electricity still due for the tenant and month.
   String _suggestedAmount() {
     final tenant = ref.read(tenantsProvider.notifier).byId(_tenantId);
-    if (tenant == null || _type != PaymentType.rent) return '';
-    final due = dueOf(tenant, _month, ref.read(paymentsProvider),
-            ref.read(rentRulesProvider), DateTime.now())
-        .due;
+    if (tenant == null) return '';
+    double due = 0;
+    if (_type == PaymentType.rent) {
+      due = dueOf(tenant, _month, ref.read(paymentsProvider),
+              ref.read(rentRulesProvider), DateTime.now())
+          .due;
+    } else if (_type == PaymentType.electricity) {
+      due = ref
+          .read(electricityDuesProvider)
+          .where((d) => d.tenant.id == tenant.id && sameMonth(d.month, _month))
+          .fold(0.0, (s, d) => s + d.due);
+    }
     return due > 0 ? due.toStringAsFixed(0) : '';
   }
 
-  void _refreshSuggestion() {
-    if (_isEdit) return;
-    _amount.text = _suggestedAmount();
-  }
+  void _refreshSuggestion() => _amount.text = _suggestedAmount();
 
   @override
   void dispose() {
@@ -74,7 +76,7 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
     if (!_formKey.currentState!.validate()) return;
     final tenant = ref.read(tenantsProvider.notifier).byId(_tenantId)!;
     ref.read(paymentsProvider.notifier).save(Payment(
-          id: _existing?.id ?? newId(),
+          id: newId(),
           tenantId: tenant.id,
           amount: double.parse(_amount.text.trim()),
           type: _type,
@@ -85,15 +87,6 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
         ));
     showSaved(context,
         '${money(double.parse(_amount.text.trim()))} from ${tenant.name} saved');
-    context.pop();
-  }
-
-  Future<void> _delete() async {
-    final ok = await confirmDialog(context,
-        title: 'Delete this payment?', message: 'This cannot be undone.');
-    if (!ok || !mounted) return;
-    ref.read(paymentsProvider.notifier).remove(_existing!.id);
-    showSaved(context, 'Payment deleted');
     context.pop();
   }
 
@@ -111,22 +104,10 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
     if (!months.any((m) => sameMonth(m, _month))) months.insert(0, _month);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEdit ? 'Edit Payment' : 'Record Payment'),
-        actions: [
-          if (_isEdit)
-            IconButton(
-              tooltip: 'Delete payment',
-              icon: const Icon(Icons.delete_outline_rounded),
-              onPressed: _delete,
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Record Payment')),
       bottomNavigationBar: tenants.isEmpty
           ? null
-          : SaveBar(
-              label: _isEdit ? 'Save Changes' : 'Save Payment',
-              onPressed: _save),
+          : SaveBar(label: 'Save Payment', onPressed: _save),
       body: tenants.isEmpty
           ? Center(
               child: EmptyState(
@@ -217,11 +198,11 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
                             prefixText: '₹ ',
                             prefixIcon:
                                 const Icon(Icons.currency_rupee_rounded),
-                            helperText: _type == PaymentType.rent &&
-                                    !_isEdit &&
+                            helperText: (_type == PaymentType.rent ||
+                                        _type == PaymentType.electricity) &&
                                     _tenantId != null
                                 ? 'Filled with the amount due — change if different'
-                                : null,
+                                : 'Payments can\'t be edited after saving',
                           ),
                           validator: (v) {
                             final err = amountField(v, 'amount');

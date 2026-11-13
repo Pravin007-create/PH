@@ -6,6 +6,8 @@ import '../features/expenses/expenses_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/more/more_screen.dart';
 import '../features/more/profile_screen.dart';
+import '../features/payments/deleted_payments_screen.dart';
+import '../features/payments/payment_detail_screen.dart';
 import '../features/payments/payment_form_screen.dart';
 import '../features/payments/payments_screen.dart';
 import '../features/reports/reports_screen.dart';
@@ -15,6 +17,7 @@ import '../features/shell/app_shell.dart';
 import '../features/tenants/move_out_screen.dart';
 import '../features/tenants/tenant_form_screen.dart';
 import '../features/tenants/tenants_screen.dart';
+import '../data/models.dart';
 import 'password_gate.dart';
 
 export 'package:go_router/go_router.dart';
@@ -84,17 +87,22 @@ GoRouter buildRouter() => GoRouter(
                 TenantFormScreen(tenantId: s.pathParameters['id'])),
         GoRoute(
             path: '/payments/new',
-            builder: (_, s) =>
-                PaymentFormScreen(
+            builder: (_, s) => PaymentFormScreen(
                   tenantId: s.uri.queryParameters['tenant'],
-                  month: DateTime.tryParse(s.uri.queryParameters['month'] ?? ''),
+                  month:
+                      DateTime.tryParse(s.uri.queryParameters['month'] ?? ''),
+                  type: PaymentType.values
+                      .where((t) => t.name == s.uri.queryParameters['type'])
+                      .firstOrNull,
                 )),
+        GoRoute(
+            path: '/payments/deleted',
+            builder: (_, __) => const DeletedPaymentsScreen()),
         GoRoute(
             path: '/payments/:id',
             builder: (_, s) =>
-                PaymentFormScreen(paymentId: s.pathParameters['id'])),
-        GoRoute(
-            path: '/expenses', builder: (_, __) => const ExpensesScreen()),
+                PaymentDetailScreen(paymentId: s.pathParameters['id']!)),
+        GoRoute(path: '/expenses', builder: (_, __) => const ExpensesScreen()),
         GoRoute(
             path: '/expenses/new',
             builder: (_, __) => const ExpenseFormScreen()),

@@ -1,0 +1,360 @@
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pg_hostel_management/core/format.dart';
+import 'package:pg_hostel_management/data/backup.dart';
+import 'package:pg_hostel_management/data/calculations.dart';
+import 'package:pg_hostel_management/data/models.dart';
+import 'package:pg_hostel_management/data/store.dart';
+import 'package:pg_hostel_management/features/rooms/room_form_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'widget_test.dart' as w;
+
+ProviderContainer container(WidgetTester tester) =>
+    ProviderScope.containerOf(tester.element(find.byType(Scaffold).first));
+
+void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  group('Room numbers', () {
+    test('auto numbering keeps prefix and zero padding', () {
+      expect(autoRoomNumbers('101', 3), ['101', '102', '103']);
+      expect(autoRoomNumbers('A-09', 3), ['A-09', 'A-10', 'A-11']);
+      expect(autoRoomNumbers('G', 2), ['G', '']); // can't increase
+    });
+  });
+
+  testWidgets('Add 3 rooms of the same type at once (auto + manual numbers)',
+      (tester) async {
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('Rooms'));
+    await w.tapOn(tester, find.text('Add your first room'));
+
+    await w.tapOn(tester, find.byTooltip('More rooms'));
+    await w.tapOn(tester, find.byTooltip('More rooms')); // 3 rooms
+    await w.enter(tester, 'Starting room number *', '201');
+    await w.enter(tester, 'Monthly rent per bed *', '5000');
+    expect(find.text('Room 203'), findsOneWidget); // preview
+
+    // Switch to manual and change the last number.
+    await w.tapOn(tester, find.text('Enter manually'));
+    await w.enter(tester, 'Room 3 number *', '210');
+    await w.tapOn(tester, find.text('Create 3 Rooms'));
+
+    final rooms = container(tester).read(roomsProvider);
+    expect(rooms.map((r) => r.number), ['201', '202', '210']);
+    expect(rooms.every((r) => r.rent == 5000 && r.beds == 2), isTrue);
+    expect(rooms.map((r) => r.id).toSet().length, 3);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Room opens read-only; Edit button enables editing',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'rooms': jsonEncode([
+        {'id': 'r1', 'number': '101', 'beds': 2, 'rent': 6000}
+      ]),
+    });
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('Rooms'));
+    await w.tapOn(tester, find.text('Room 101'));
+
+    expect(find.byType(TextFormField), findsNothing); // view mode
+    expect(find.text('Save Changes'), findsNothing);
+
+    await w.tapOn(tester, find.text('Edit'));
+    await w.enter(tester, 'Monthly rent per bed *', '6500');
+    await w.tapOn(tester, find.text('Electricity bill separate'));
+    await w.tapOn(tester, find.text('Save Changes'));
+
+    expect(find.byType(TextFormField), findsNothing); // back to view mode
+    expect(find.text(money(6500)), findsOneWidget);
+    expect(find.text('Separate (split)'), findsOneWidget);
+
+    // Back while editing cancels the edit and stays on the page.
+    await w.tapOn(tester, find.text('Edit'));
+    await w.enter(tester, 'Monthly rent per bed *', '9999');
+    await w.back(tester);
+    expect(find.text('Room 101'), findsWidgets);
+    expect(find.text(money(6500)), findsOneWidget);
+  });
+
+  testWidgets('Tenant opens read-only; Edit then Save updates details',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'tenants': jsonEncode([
+        {
+          'id': 't1',
+          'name': 'Ravi Kumar',
+          'phone': '9876543210',
+          'rent': 6000,
+          'joinDate': DateTime(2026, 11, 1).toIso8601String(),
+        }
+      ]),
+    });
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('Tenants'));
+    await w.tapOn(tester, find.text('Ravi Kumar'));
+    expect(find.byType(TextFormField), findsNothing);
+    expect(find.text('Tenant Details'), findsOneWidget);
+
+    await w.tapOn(tester, find.text('Edit'));
+    await w.enter(tester, 'Mobile number *', '9000000001');
+    await w.tapOn(tester, find.text('Save Changes'));
+    expect(find.text('+91 9000000001'), findsOneWidget);
+    expect(find.byType(TextFormField), findsNothing);
+  });
+
+  testWidgets('Payment cannot be edited; delete keeps it in the log',
+      (tester) async {
+    final now = DateTime.now();
+    SharedPreferences.setMockInitialValues({
+      'tenants': jsonEncode([
+        {
+          'id': 't1',
+          'name': 'Ravi Kumar',
+          'phone': '9876543210',
+          'rent': 6000,
+          'joinDate': DateTime(now.year, now.month).toIso8601String(),
+        }
+      ]),
+      'payments': jsonEncode([
+        Payment(
+                id: 'p1',
+                tenantId: 't1',
+                amount: 6000,
+                type: PaymentType.rent,
+                month: DateTime(now.year, now.month),
+                date: now)
+            .toJson()
+      ]),
+    });
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('Payments'));
+    await w.tapOn(tester, find.text('Payments (1)')); // segment
+    await w.tapOn(tester, find.textContaining('Rent · '));
+
+    expect(find.text('Payment Details'), findsOneWidget);
+    expect(find.byType(TextFormField), findsNothing);
+    expect(find.text('Save Changes'), findsNothing);
+    expect(find.text('Save Payment'), findsNothing);
+
+    await w.tapOn(tester, find.text('Delete Payment'));
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Reason (optional)'), 'Wrong amount');
+    await w.tapOn(tester, find.text('Delete'));
+
+    final c = container(tester);
+    expect(c.read(paymentsProvider), isEmpty);
+    expect(c.read(deletedPaymentsProvider).single.reason, 'Wrong amount');
+
+    await w.tapOn(tester, find.byTooltip('Deleted payments'));
+    expect(find.text('Ravi Kumar · Rent'), findsOneWidget);
+    expect(find.textContaining('Wrong amount'), findsOneWidget);
+  });
+
+  group('Electricity split', () {
+    final a = Tenant(
+        id: 'a', name: 'A', phone: '1', rent: 1, joinDate: DateTime(2026, 1));
+    final b = Tenant(
+        id: 'b', name: 'B', phone: '2', rent: 1, joinDate: DateTime(2026, 1));
+    final bill = ElectricityBill(
+        id: 'e',
+        roomId: 'r',
+        month: DateTime(2026, 10),
+        amount: 900,
+        tenantIds: const ['a', 'b'],
+        createdAt: DateTime(2026, 11));
+
+    test('Bill is split equally; payments clear each share', () {
+      expect(bill.share, 450);
+      final paid = Payment(
+          id: 'p',
+          tenantId: 'a',
+          amount: 450,
+          type: PaymentType.electricity,
+          month: DateTime(2026, 10),
+          date: DateTime(2026, 11, 2));
+      final dues = electricityDues([bill], [a, b], [paid]);
+      expect(dues.map((d) => d.tenant.id), ['b']);
+      expect(dues.single.due, 450);
+    });
+
+    test('Only tenants staying that month are in the room', () {
+      final left = Tenant(
+          id: 'c',
+          name: 'C',
+          phone: '3',
+          rent: 1,
+          roomId: 'r',
+          joinDate: DateTime(2026, 1),
+          leaveDate: DateTime(2026, 9, 10));
+      final stay = Tenant(
+          id: 'd',
+          name: 'D',
+          phone: '4',
+          rent: 1,
+          roomId: 'r',
+          joinDate: DateTime(2026, 1));
+      expect(
+          tenantsInRoomFor('r', DateTime(2026, 10), [left, stay])
+              .map((t) => t.id),
+          ['d']);
+    });
+  });
+
+  testWidgets('Room electricity bill → each tenant owes a share',
+      (tester) async {
+    final join = DateTime(2026, 1, 1).toIso8601String();
+    SharedPreferences.setMockInitialValues({
+      'rooms': jsonEncode([
+        {
+          'id': 'r1',
+          'number': '101',
+          'beds': 2,
+          'rent': 6000,
+          'separateElectricity': true
+        }
+      ]),
+      'tenants': jsonEncode([
+        for (final n in ['Asha', 'Bala'])
+          {
+            'id': n,
+            'name': n,
+            'phone': '9876543210',
+            'roomId': 'r1',
+            'rent': 6000,
+            'joinDate': join,
+            'createdAt': join,
+          }
+      ]),
+    });
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('Rooms'));
+    await w.tapOn(tester, find.text('Room 101'));
+    await w.tapOn(tester, find.text('Add Electricity Bill +'));
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Bill amount *'), '1200');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('= ${money(600)} per person'), findsOneWidget);
+    await w.tapOn(tester, find.text('Save Bill'));
+
+    expect(find.text('${money(600)} pending'), findsNWidgets(2));
+    expect(container(tester).read(electricityDuesProvider).length, 2);
+
+    // Collect from Asha: amount pre-filled with her share.
+    await w.tapOn(tester, find.text('Collect'));
+    expect(find.widgetWithText(TextFormField, '600'), findsOneWidget);
+    await w.tapOn(tester, find.text('Save Payment'));
+    expect(find.text('Paid'), findsOneWidget);
+    expect(find.text('${money(600)} pending'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  group('Backup', () {
+    test('Export then import restores everything', () async {
+      SharedPreferences.setMockInitialValues({
+        'profile': jsonEncode({'pgName': 'Sunrise PG'}),
+        'rooms': jsonEncode([
+          {'id': 'r1', 'number': '101', 'beds': 2, 'rent': 6000}
+        ]),
+        'tenants': jsonEncode([
+          {
+            'id': 't1',
+            'name': 'Ravi',
+            'phone': '9876543210',
+            'rent': 6000,
+            'joinDate': DateTime(2026, 1).toIso8601String(),
+          }
+        ]),
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final json = exportBackup(prefs);
+      final summary = readBackup(json);
+      expect(summary.rooms, 1);
+      expect(summary.tenants, 1);
+      expect(summary.pgName, 'Sunrise PG');
+
+      await prefs.clear();
+      await importBackup(prefs, json);
+      expect(jsonDecode(prefs.getString('rooms')!), hasLength(1));
+      expect(jsonDecode(prefs.getString('profile')!)['pgName'], 'Sunrise PG');
+    });
+
+    test('Wrong or damaged file is rejected and nothing changes', () async {
+      SharedPreferences.setMockInitialValues({'rooms': '[]'});
+      final prefs = await SharedPreferences.getInstance();
+      expect(() => importBackup(prefs, 'hello'),
+          throwsA(isA<BackupException>()));
+      expect(() => importBackup(prefs, '{"rooms": []}'),
+          throwsA(isA<BackupException>()));
+      expect(
+          () => importBackup(prefs,
+              '{"format": "$backupFormat", "rooms": [{"id": 1}]}'),
+          throwsA(isA<BackupException>()));
+      expect(prefs.getString('rooms'), '[]');
+    });
+  });
+
+  testWidgets('More: no Lock option; Export and Import shown', (tester) async {
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('More'));
+    expect(find.text('Lock app'), findsNothing);
+    expect(find.text('Export all data'), findsOneWidget);
+    expect(find.text('Import data'), findsOneWidget);
+    expect(find.text('Deleted payments'), findsOneWidget);
+  });
+
+  testWidgets('Move-out adds pending electricity as a deduction',
+      (tester) async {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month).toIso8601String();
+    SharedPreferences.setMockInitialValues({
+      'tenants': jsonEncode([
+        {
+          'id': 't1',
+          'name': 'Ravi Kumar',
+          'phone': '9876543210',
+          'roomId': 'r1',
+          'rent': 6000,
+          'deposit': 10000,
+          'joinDate': start,
+          'createdAt': start,
+        }
+      ]),
+      'electricity_bills': jsonEncode([
+        ElectricityBill(
+                id: 'e1',
+                roomId: 'r1',
+                month: DateTime(now.year, now.month),
+                amount: 800,
+                tenantIds: const ['t1'],
+                createdAt: now)
+            .toJson()
+      ]),
+    });
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('Tenants'));
+    await w.tapOn(tester, find.text('Ravi Kumar'));
+    expect(find.textContaining('Electricity'), findsWidgets);
+    await w.tapOn(tester, find.text('Move out'));
+
+    // 10,000 − 6,000 rent − 800 electricity = 3,200.
+    expect(find.text(money(3200)), findsWidgets);
+    await w.tapOn(tester, find.textContaining('Confirm · Refund'));
+    await w.tapOn(tester, find.text('Confirm move-out'));
+
+    final c = container(tester);
+    expect(c.read(electricityDuesProvider), isEmpty);
+    expect(
+        c
+            .read(paymentsProvider)
+            .where((p) => p.type == PaymentType.electricity)
+            .single
+            .amount,
+        800);
+  });
+}

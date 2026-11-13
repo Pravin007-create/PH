@@ -305,8 +305,8 @@ final overdueProvider = Provider<List<TenantDue>>((ref) => overdueRent(
 /// Every month with rent still unpaid for [t], up to the month they leave
 /// (they stayed part of that month, so it is owed). Oldest first.
 /// Months before the tenant was added to the app are skipped.
-List<TenantDue> unpaidRentUntil(Tenant t, DateTime leaveDate,
-    List<Payment> payments, RentRules rules) {
+List<TenantDue> unpaidRentUntil(
+    Tenant t, DateTime leaveDate, List<Payment> payments, RentRules rules) {
   final last = monthOf(leaveDate);
   final joined = monthOf(t.joinDate);
   final tracked = rules.currentRentMonth(t.addedOn);
@@ -376,8 +376,8 @@ SettlementResult settle({
         id: nextId(),
         tenantId: tenant.id,
         amount: take,
-        type: PaymentType.other,
-        month: monthOf(date),
+        type: x.type ?? PaymentType.other,
+        month: x.month ?? monthOf(date),
         date: date,
         mode: adjustedFromDeposit,
         note: 'Move-out: ${x.label}',
@@ -402,3 +402,79 @@ SettlementResult settle({
     payments,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Electricity (rooms billed separately)
+// ---------------------------------------------------------------------------
+
+/// One tenant's unpaid share of a room electricity bill.
+class ElectricityDue {
+  const ElectricityDue(this.bill, this.tenant, this.paid);
+  final ElectricityBill bill;
+  final Tenant tenant;
+  final double paid;
+
+  DateTime get month => bill.month;
+  double get share => bill.share;
+  double get due => max(0, share - paid);
+  bool get isPaid => due < 0.5;
+}
+
+/// Electricity paid by [tenantId] for [month].
+double electricityPaid(
+        String tenantId, DateTime month, List<Payment> payments) =>
+    payments
+        .where((p) =>
+            p.tenantId == tenantId &&
+            p.type == PaymentType.electricity &&
+            sameMonth(p.month, month))
+        .fold(0.0, (s, p) => s + p.amount);
+
+/// Each tenant's share of every bill (paid and unpaid), newest month first.
+/// Several bills for the same tenant and month are combined against the
+/// electricity payments for that month.
+List<ElectricityDue> electricityShares(
+    List<ElectricityBill> bills, List<Tenant> tenants, List<Payment> payments) {
+  final byId = {for (final t in tenants) t.id: t};
+  final sorted = [...bills]..sort((a, b) {
+      final c = b.month.compareTo(a.month);
+      return c != 0 ? c : a.createdAt.compareTo(b.createdAt);
+    });
+  // Payments for a tenant+month are used up bill by bill.
+  final left = <String, double>{};
+  final result = <ElectricityDue>[];
+  for (final b in sorted) {
+    for (final id in b.tenantIds) {
+      final t = byId[id];
+      if (t == null) continue;
+      final key = '$id|${b.month.year}-${b.month.month}';
+      final available = left[key] ?? electricityPaid(id, b.month, payments);
+      final used = min(available, b.share);
+      left[key] = available - used;
+      result.add(ElectricityDue(b, t, used));
+    }
+  }
+  return result;
+}
+
+/// Unpaid electricity shares only.
+List<ElectricityDue> electricityDues(List<ElectricityBill> bills,
+        List<Tenant> tenants, List<Payment> payments) =>
+    electricityShares(bills, tenants, payments)
+        .where((d) => !d.isPaid)
+        .toList();
+
+/// Tenants staying in [roomId] at any point during [month].
+List<Tenant> tenantsInRoomFor(
+        String roomId, DateTime month, List<Tenant> tenants) =>
+    tenants.where((t) {
+      if (t.roomId != roomId) return false;
+      final start = monthOf(month);
+      final end = addMonths(start, 1);
+      return t.joinDate.isBefore(end) &&
+          (t.leaveDate == null || !t.leaveDate!.isBefore(start));
+    }).toList();
+
+final electricityDuesProvider = Provider<List<ElectricityDue>>((ref) =>
+    electricityDues(ref.watch(electricityBillsProvider),
+        ref.watch(tenantsProvider), ref.watch(paymentsProvider)));
