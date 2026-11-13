@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/format.dart';
+import '../../data/calculations.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
 import '../../widgets/common.dart';
@@ -20,6 +22,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   late final _owner = TextEditingController(text: _p.ownerName);
   late final _phone = TextEditingController(text: _p.phone);
   late final _address = TextEditingController(text: _p.address);
+  late RentCycle _cycle = _p.rentCycle;
+  late int _dueDays = _p.dueDays;
 
   @override
   void dispose() {
@@ -36,6 +40,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ownerName: _owner.text.trim(),
           phone: _phone.text.trim(),
           address: _address.text.trim(),
+          rentCycle: _cycle,
+          dueDays: _dueDays,
         ));
     showSaved(context, 'PG details saved');
     context.pop();
@@ -100,6 +106,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       alignLabelWithHint: true,
                     ),
                   ),
+                  ..._rentRules(context),
                 ],
               ),
             ),
@@ -107,5 +114,97 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
       ),
     );
+  }
+
+  List<Widget> _rentRules(BuildContext context) {
+    final rules = RentRules(cycle: _cycle, dueDays: _dueDays);
+    final example = rules.currentRentMonth(DateTime.now());
+    final scheme = Theme.of(context).colorScheme;
+    return [
+      const FormLabel('Rent collection'),
+      Text('When do you collect rent for a month?',
+          style: TextStyle(color: scheme.onSurfaceVariant)),
+      const SizedBox(height: 8),
+      SegmentedButton<RentCycle>(
+        segments: const [
+          ButtonSegment(
+              value: RentCycle.monthStart,
+              label: Text('Start of month'),
+              icon: Icon(Icons.first_page_rounded)),
+          ButtonSegment(
+              value: RentCycle.monthEnd,
+              label: Text('End of month'),
+              icon: Icon(Icons.last_page_rounded)),
+        ],
+        selected: {_cycle},
+        onSelectionChanged: (v) => setState(() => _cycle = v.first),
+      ),
+      const SizedBox(height: 16),
+      Text('How many days do tenants get to pay?',
+          style: TextStyle(color: scheme.onSurfaceVariant)),
+      const SizedBox(height: 8),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(children: [
+            IconButton.filledTonal(
+              tooltip: 'Fewer days',
+              onPressed:
+                  _dueDays > 1 ? () => setState(() => _dueDays--) : null,
+              icon: const Icon(Icons.remove_rounded),
+            ),
+            Expanded(
+              child: Column(children: [
+                Text('$_dueDays',
+                    style: Theme.of(context)
+                        .textTheme
+                        .headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Text(_dueDays == 1 ? 'day to pay' : 'days to pay'),
+              ]),
+            ),
+            IconButton.filledTonal(
+              tooltip: 'More days',
+              onPressed:
+                  _dueDays < 28 ? () => setState(() => _dueDays++) : null,
+              icon: const Icon(Icons.add_rounded),
+            ),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 12),
+      // Live example so the owner can see exactly what the setting means.
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: scheme.primaryContainer.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.lightbulb_outline_rounded, color: scheme.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(rules.describe(example),
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Between ${fmtDate(rules.collectFrom(example))} and '
+                    '${fmtDate(rules.dueDate(example))} unpaid rent shows as '
+                    '"Due". After ${fmtDate(rules.dueDate(example))} it shows '
+                    'as OVERDUE with an alert on the home screen.',
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
   }
 }

@@ -42,6 +42,88 @@ class Room {
       );
 }
 
+/// One deduction line at move-out (cleaning, damage, ...).
+class Deduction {
+  const Deduction(this.label, this.amount);
+  final String label;
+  final double amount;
+
+  Map<String, dynamic> toJson() => {'label': label, 'amount': amount};
+  factory Deduction.fromJson(Map<String, dynamic> j) =>
+      Deduction(j['label'] as String, (j['amount'] as num).toDouble());
+}
+
+/// Final account when a tenant moves out: advance minus dues = refund.
+class Settlement {
+  const Settlement({
+    required this.date,
+    required this.deposit,
+    this.collectedNow = 0,
+    required this.rentAdjusted,
+    required this.rentMonths,
+    this.deductions = const [],
+    required this.refund,
+    this.stillOwed = 0,
+    this.waivedMonths = const [],
+  });
+
+  final DateTime date;
+
+  /// Advance held when moving out.
+  final double deposit;
+
+  /// Cash collected at move-out when the advance wasn't enough.
+  final double collectedNow;
+
+  /// Pending rent cleared from the advance.
+  final double rentAdjusted;
+
+  /// e.g. ["October 2026", "November 2026"]
+  final List<String> rentMonths;
+  final List<Deduction> deductions;
+
+  /// Amount returned to the tenant.
+  final double refund;
+
+  /// Dues the advance + cash didn't cover.
+  final double stillOwed;
+
+  /// Rent months the owner chose not to charge (first day of month).
+  final List<DateTime> waivedMonths;
+
+  double get deductionsTotal => deductions.fold(0, (s, d) => s + d.amount);
+
+  Map<String, dynamic> toJson() => {
+        'date': date.toIso8601String(),
+        'deposit': deposit,
+        'collectedNow': collectedNow,
+        'rentAdjusted': rentAdjusted,
+        'rentMonths': rentMonths,
+        'deductions': deductions.map((d) => d.toJson()).toList(),
+        'refund': refund,
+        'stillOwed': stillOwed,
+        'waivedMonths': waivedMonths.map((m) => m.toIso8601String()).toList(),
+      };
+
+  factory Settlement.fromJson(Map<String, dynamic> j) => Settlement(
+        date: DateTime.parse(j['date'] as String),
+        deposit: (j['deposit'] as num).toDouble(),
+        collectedNow: ((j['collectedNow'] ?? 0) as num).toDouble(),
+        rentAdjusted: (j['rentAdjusted'] as num).toDouble(),
+        rentMonths: List<String>.from((j['rentMonths'] ?? const []) as List),
+        deductions: [
+          for (final d in (j['deductions'] ?? const []) as List)
+            Deduction.fromJson(Map<String, dynamic>.from(d as Map))
+        ],
+        refund: (j['refund'] as num).toDouble(),
+        stillOwed: ((j['stillOwed'] ?? 0) as num).toDouble(),
+        waivedMonths: [
+          for (final m in (j['waivedMonths'] ?? const []) as List)
+            DateTime.parse(m as String)
+        ],
+      );
+}
+
 class Tenant {
   final String id;
   final String name;
@@ -55,6 +137,13 @@ class Tenant {
   final DateTime? leaveDate;
   final String notes;
 
+  /// When the tenant was added to the app. Unpaid rent from months before
+  /// this is not counted as overdue (the owner may not have recorded it).
+  final DateTime? createdAt;
+
+  /// Filled in when the tenant moves out through the settlement screen.
+  final Settlement? settlement;
+
   const Tenant({
     required this.id,
     required this.name,
@@ -65,11 +154,29 @@ class Tenant {
     required this.joinDate,
     this.leaveDate,
     this.notes = '',
+    this.createdAt,
+    this.settlement,
   });
 
   bool get isActive => leaveDate == null;
 
-  Tenant copyWith({DateTime? leaveDate, bool clearLeaveDate = false}) => Tenant(
+  /// createdAt, or recovered from the id (ids are creation timestamps).
+  DateTime get addedOn {
+    if (createdAt != null) return createdAt!;
+    final micros = int.tryParse(id);
+    if (micros != null && micros > 1000000000000000) {
+      return DateTime.fromMicrosecondsSinceEpoch(micros);
+    }
+    return joinDate;
+  }
+
+  Tenant copyWith({
+    DateTime? leaveDate,
+    bool clearLeaveDate = false,
+    Settlement? settlement,
+    bool clearSettlement = false,
+  }) =>
+      Tenant(
         id: id,
         name: name,
         phone: phone,
@@ -79,6 +186,9 @@ class Tenant {
         joinDate: joinDate,
         leaveDate: clearLeaveDate ? null : (leaveDate ?? this.leaveDate),
         notes: notes,
+        createdAt: createdAt,
+        settlement:
+            clearSettlement ? null : (settlement ?? this.settlement),
       );
 
   Map<String, dynamic> toJson() => {
@@ -91,6 +201,8 @@ class Tenant {
         'joinDate': joinDate.toIso8601String(),
         'leaveDate': leaveDate?.toIso8601String(),
         'notes': notes,
+        'createdAt': createdAt?.toIso8601String(),
+        'settlement': settlement?.toJson(),
       };
 
   factory Tenant.fromJson(Map<String, dynamic> j) => Tenant(
@@ -105,6 +217,13 @@ class Tenant {
             ? null
             : DateTime.parse(j['leaveDate'] as String),
         notes: (j['notes'] ?? '') as String,
+        createdAt: j['createdAt'] == null
+            ? null
+            : DateTime.parse(j['createdAt'] as String),
+        settlement: j['settlement'] == null
+            ? null
+            : Settlement.fromJson(
+                Map<String, dynamic>.from(j['settlement'] as Map)),
       );
 }
 
@@ -119,6 +238,9 @@ enum PaymentType {
 }
 
 const paymentModes = ['Cash', 'UPI', 'Bank transfer', 'Other'];
+
+/// Mode used for dues cleared from the tenant's advance at move-out.
+const adjustedFromDeposit = 'Adjusted from deposit';
 
 class Payment {
   final String id;
@@ -216,17 +338,36 @@ class Expense {
       );
 }
 
+/// When rent for a month is collected.
+enum RentCycle {
+  /// Rent for November is collected from 1 November.
+  monthStart('Start of month'),
+
+  /// Rent for October is collected at the end of October (paid by early Nov).
+  monthEnd('End of month');
+
+  const RentCycle(this.label);
+  final String label;
+}
+
 class PgProfile {
   final String pgName;
   final String ownerName;
   final String phone;
   final String address;
+  final RentCycle rentCycle;
+
+  /// Days allowed to pay. Start of month + 5 → due by the 5th.
+  /// End of month + 5 → due by the 5th of the next month.
+  final int dueDays;
 
   const PgProfile({
     this.pgName = '',
     this.ownerName = '',
     this.phone = '',
     this.address = '',
+    this.rentCycle = RentCycle.monthStart,
+    this.dueDays = 5,
   });
 
   bool get isEmpty => pgName.isEmpty && ownerName.isEmpty;
@@ -236,6 +377,8 @@ class PgProfile {
         'ownerName': ownerName,
         'phone': phone,
         'address': address,
+        'rentCycle': rentCycle.name,
+        'dueDays': dueDays,
       };
 
   factory PgProfile.fromJson(Map<String, dynamic> j) => PgProfile(
@@ -243,5 +386,9 @@ class PgProfile {
         ownerName: (j['ownerName'] ?? '') as String,
         phone: (j['phone'] ?? '') as String,
         address: (j['address'] ?? '') as String,
+        rentCycle: RentCycle.values.firstWhere(
+            (c) => c.name == j['rentCycle'],
+            orElse: () => RentCycle.monthStart),
+        dueDays: ((j['dueDays'] ?? 5) as num).toInt().clamp(1, 28),
       );
 }

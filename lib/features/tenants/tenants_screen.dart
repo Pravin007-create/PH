@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../data/calculations.dart';
 import '../../data/store.dart';
 import '../../widgets/common.dart';
+import '../../widgets/due_chip.dart';
 
 class TenantsScreen extends ConsumerStatefulWidget {
   const TenantsScreen({super.key});
@@ -24,10 +25,14 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
     final all = ref.watch(tenantsProvider);
     final rooms = ref.watch(roomsProvider.notifier);
     ref.watch(roomsProvider);
-    final month = monthOf(DateTime.now());
+    final month = ref.watch(currentRentMonthProvider);
     final status = {
       for (final d in ref.watch(monthSummaryProvider(month)).dues)
         d.tenant.id: d
+    };
+    // Tenants with overdue rent from any month.
+    final overdueIds = {
+      for (final d in ref.watch(overdueProvider)) d.tenant.id
     };
 
     final q = _query.toLowerCase();
@@ -133,14 +138,13 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
                             trailing: !t.isActive
                                 ? const StatusChip('Moved out',
                                     color: Colors.grey)
-                                : status[t.id] == null
-                                    ? null
-                                    : status[t.id]!.isPaid
-                                        ? const StatusChip('Paid',
-                                            color: AppColors.success)
-                                        : StatusChip(
-                                            'Due ${money(status[t.id]!.due)}',
-                                            color: AppColors.warning),
+                                : overdueIds.contains(t.id) &&
+                                        !(status[t.id]?.isOverdue ?? false)
+                                    ? const StatusChip('Overdue',
+                                        color: Color(0xFFDC2626))
+                                    : status[t.id] == null
+                                        ? null
+                                        : DueChip(status[t.id]!),
                           ),
                         ),
                         const SizedBox(height: 8),

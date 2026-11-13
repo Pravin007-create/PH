@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/calculations.dart';
+
 /// Bottom tab bar on phones, side rail on tablets.
-class AppShell extends StatelessWidget {
+class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.shell});
   final StatefulNavigationShell shell;
 
@@ -18,8 +21,15 @@ class AppShell extends StatelessWidget {
       shell.goBranch(index, initialLocation: index == shell.currentIndex);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final isWide = MediaQuery.sizeOf(context).width >= 840;
+    final overdueCount =
+        ref.watch(overdueProvider).map((d) => d.tenant.id).toSet().length;
+
+    // Red badge with the number of overdue tenants on the Payments tab.
+    Widget icon(int i, IconData data) => i == 3 && overdueCount > 0
+        ? Badge(label: Text('$overdueCount'), child: Icon(data))
+        : Icon(data);
 
     // Back on any tab other than Home goes to Home instead of closing the app.
     return PopScope(
@@ -35,10 +45,10 @@ class AppShell extends StatelessWidget {
                   onDestinationSelected: _go,
                   labelType: NavigationRailLabelType.all,
                   destinations: [
-                    for (final t in _tabs)
+                    for (final (i, t) in _tabs.indexed)
                       NavigationRailDestination(
-                        icon: Icon(t.$1),
-                        selectedIcon: Icon(t.$2),
+                        icon: icon(i, t.$1),
+                        selectedIcon: icon(i, t.$2),
                         label: Text(t.$3),
                       ),
                   ],
@@ -53,10 +63,10 @@ class AppShell extends StatelessWidget {
                 selectedIndex: shell.currentIndex,
                 onDestinationSelected: _go,
                 destinations: [
-                  for (final t in _tabs)
+                  for (final (i, t) in _tabs.indexed)
                     NavigationDestination(
-                      icon: Icon(t.$1),
-                      selectedIcon: Icon(t.$2),
+                      icon: icon(i, t.$1),
+                      selectedIcon: icon(i, t.$2),
                       label: t.$3,
                     ),
                 ],

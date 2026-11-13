@@ -8,14 +8,21 @@ import '../../data/calculations.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
 import '../../widgets/common.dart';
+import '../../widgets/due_chip.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final month = monthOf(DateTime.now());
+    // The rent month being collected now (October on 3 Nov for an
+    // end-of-month PG), not simply the calendar month.
+    final month = ref.watch(currentRentMonthProvider);
     final s = ref.watch(monthSummaryProvider(month));
+    final calendarMonth = monthOf(DateTime.now());
+    final monthExpenses =
+        ref.watch(monthSummaryProvider(calendarMonth)).expenses;
+    final overdue = ref.watch(overdueProvider);
     final profile = ref.watch(profileProvider);
     final rooms = ref.watch(roomsProvider);
     final tenants = ref.watch(tenantsProvider);
@@ -23,6 +30,8 @@ class HomeScreen extends ConsumerWidget {
       ..sort((a, b) => b.date.compareTo(a.date));
     final tenantStore = ref.read(tenantsProvider.notifier);
     final unpaid = s.unpaid;
+    // Overdue (any month, oldest first), then this rent month's due/upcoming.
+    final pending = [...overdue, ...unpaid.where((d) => !d.isOverdue)];
 
     return Scaffold(
       body: SafeArea(
@@ -34,6 +43,7 @@ class HomeScreen extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _Header(profile: profile, summary: s),
+                  _RentAlert(summary: s, overdue: overdue),
 
                   if (rooms.isEmpty || tenants.isEmpty)
                     _GetStarted(
@@ -64,15 +74,19 @@ class HomeScreen extends ConsumerWidget {
                       icon: Icons.pending_actions_rounded,
                       label: 'Pending rent',
                       value: money(s.pendingRent),
-                      caption: '${unpaid.length} tenants',
-                      color: AppColors.warning,
+                      caption: overdue.isEmpty
+                          ? '${unpaid.length} tenants'
+                          : '${overdue.map((d) => d.tenant.id).toSet().length} overdue',
+                      color: overdue.isEmpty
+                          ? AppColors.warning
+                          : const Color(0xFFDC2626),
                       onTap: () => context.go('/payments'),
                     ),
                     StatCard(
                       icon: Icons.receipt_long_rounded,
                       label: 'Expenses',
-                      value: money(s.expenses),
-                      caption: 'This month',
+                      value: money(monthExpenses),
+                      caption: fmtMonthShort(calendarMonth),
                       color: AppColors.pink,
                       onTap: () => context.push('/expenses'),
                     ),
@@ -119,14 +133,14 @@ class HomeScreen extends ConsumerWidget {
                   ]),
 
                   SectionHeader('Pending rent · ${fmtMonthShort(month)}',
-                      action: unpaid.isEmpty ? null : 'See all',
+                      action: pending.isEmpty ? null : 'See all',
                       onAction: () => context.go('/payments')),
                   if (s.dues.isEmpty)
                     const _InfoTile(
                       icon: Icons.info_outline_rounded,
                       text: 'Add tenants to start tracking rent.',
                     )
-                  else if (unpaid.isEmpty)
+                  else if (pending.isEmpty)
                     const _InfoTile(
                       icon: Icons.verified_rounded,
                       text: 'All rent collected for this month.',
@@ -135,8 +149,8 @@ class HomeScreen extends ConsumerWidget {
                   else
                     Card(
                       child: Column(children: [
-                        for (final d in unpaid.take(5)) ...[
-                          if (d != unpaid.first) const Divider(height: 1),
+                        for (final d in pending.take(6)) ...[
+                          if (d != pending.first) const Divider(height: 1),
                           _DueTile(due: d),
                         ],
                       ]),
@@ -244,7 +258,7 @@ class _Header extends StatelessWidget {
             ),
           ]),
           const SizedBox(height: 20),
-          Text('Rent collected · ${fmtMonth(s.month)}',
+          Text('Rent for ${fmtMonth(s.month)} · due ${fmtDate(s.dueDate)}',
               style: TextStyle(color: white70, fontSize: 13)),
           const SizedBox(height: 4),
           FittedBox(
@@ -344,13 +358,23 @@ class _DueTile extends ConsumerWidget {
       leading: CircleAvatar(child: Text(initials(due.tenant.name))),
       title: Text(due.tenant.name,
           maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-          '${room == null ? 'No room' : 'Room ${room.number}'} · Due ${money(due.due)}'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+              '${room == null ? 'No room' : 'Room ${room.number}'} · ${money(due.due)}'
+              '${sameMonth(due.month, monthOf(DateTime.now())) ? '' : ' · ${fmtMonthShort(due.month)}'}'),
+          const SizedBox(height: 4),
+          DueChip(due),
+        ],
+      ),
+      isThreeLine: true,
       trailing: FilledButton.tonal(
         style: FilledButton.styleFrom(
             minimumSize: const Size(0, 36),
             padding: const EdgeInsets.symmetric(horizontal: 14)),
-        onPressed: () => context.push('/payments/new?tenant=${due.tenant.id}'),
+        onPressed: () => context.push(
+            '/payments/new?tenant=${due.tenant.id}&month=${due.month.toIso8601String()}'),
         child: const Text('Collect'),
       ),
     );
@@ -428,6 +452,135 @@ class _GetStarted extends StatelessWidget {
             step(3, 'Add tenants', 'Assign tenants to rooms', hasTenants,
                 '/tenants/new'),
             const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Red alert when rent is overdue; amber reminder during the collection
+/// window; blue note before collection opens.
+class _RentAlert extends StatelessWidget {
+  const _RentAlert({required this.summary, required this.overdue});
+  final MonthSummary summary;
+  final List<TenantDue> overdue;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = summary;
+    final today = dateOnly(DateTime.now());
+
+    if (overdue.isNotEmpty) {
+      final amount = overdue.fold<double>(0, (a, d) => a + d.due);
+      final people = overdue.map((d) => d.tenant.id).toSet().length;
+      final older = overdue.where((d) => !sameMonth(d.month, s.month)).length;
+      return _banner(
+        context,
+        color: const Color(0xFFDC2626),
+        icon: Icons.warning_amber_rounded,
+        title: '$people ${people == 1 ? 'tenant has' : 'tenants have'} '
+            'not paid · ${money(amount)} overdue',
+        message: 'Due date ${fmtDate(s.dueDate)} has passed.'
+            '${older > 0 ? ' Includes $older unpaid ${older == 1 ? 'month' : 'months'} from before.' : ''}',
+        action: 'View overdue',
+        onAction: () => context.go('/payments'),
+        strong: true,
+      );
+    }
+
+    final unpaid = s.unpaid;
+    if (unpaid.isEmpty) return const SizedBox.shrink();
+
+    if (!today.isBefore(s.collectFrom)) {
+      final left = s.dueDate.difference(today).inDays;
+      return _banner(
+        context,
+        color: AppColors.warning,
+        icon: Icons.notifications_active_outlined,
+        title: 'Rent collection is open · ${unpaid.length} '
+            '${unpaid.length == 1 ? 'tenant' : 'tenants'} to pay',
+        message: left == 0
+            ? 'Last day today (${fmtDate(s.dueDate)}). Collect ${money(s.pendingRent)}.'
+            : 'Collect ${money(s.pendingRent)} by ${fmtDate(s.dueDate)} '
+                '($left ${left == 1 ? 'day' : 'days'} left).',
+        action: 'Collect now',
+        onAction: () => context.go('/payments'),
+      );
+    }
+
+    return _banner(
+      context,
+      color: AppColors.info,
+      icon: Icons.event_outlined,
+      title: 'Next rent collection from ${fmtDate(s.collectFrom)}',
+      message: '${money(s.pendingRent)} due by ${fmtDate(s.dueDate)}.',
+    );
+  }
+
+  Widget _banner(
+    BuildContext context, {
+    required Color color,
+    required IconData icon,
+    required String title,
+    required String message,
+    String? action,
+    VoidCallback? onAction,
+    bool strong = false,
+  }) {
+    final fg = strong ? Colors.white : color;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: strong ? color : color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: strong ? 1 : 0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, color: fg, size: 28),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: TextStyle(
+                              color: fg,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15)),
+                      const SizedBox(height: 4),
+                      Text(message,
+                          style: TextStyle(
+                              color: strong
+                                  ? Colors.white.withValues(alpha: 0.9)
+                                  : Theme.of(context).colorScheme.onSurface)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (action != null) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    backgroundColor: strong ? Colors.white : color,
+                    foregroundColor: strong ? color : Colors.white,
+                  ),
+                  onPressed: onAction,
+                  child: Text(action),
+                ),
+              ),
+            ],
           ],
         ),
       ),

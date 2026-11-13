@@ -12,6 +12,7 @@ import '../features/reports/reports_screen.dart';
 import '../features/rooms/room_form_screen.dart';
 import '../features/rooms/rooms_screen.dart';
 import '../features/shell/app_shell.dart';
+import '../features/tenants/move_out_screen.dart';
 import '../features/tenants/tenant_form_screen.dart';
 import '../features/tenants/tenants_screen.dart';
 import 'password_gate.dart';
@@ -74,13 +75,20 @@ GoRouter buildRouter() => GoRouter(
             builder: (_, s) =>
                 TenantFormScreen(roomId: s.uri.queryParameters['room'])),
         GoRoute(
+            path: '/tenants/:id/move-out',
+            builder: (_, s) =>
+                MoveOutScreen(tenantId: s.pathParameters['id']!)),
+        GoRoute(
             path: '/tenants/:id',
             builder: (_, s) =>
                 TenantFormScreen(tenantId: s.pathParameters['id'])),
         GoRoute(
             path: '/payments/new',
             builder: (_, s) =>
-                PaymentFormScreen(tenantId: s.uri.queryParameters['tenant'])),
+                PaymentFormScreen(
+                  tenantId: s.uri.queryParameters['tenant'],
+                  month: DateTime.tryParse(s.uri.queryParameters['month'] ?? ''),
+                )),
         GoRoute(
             path: '/payments/:id',
             builder: (_, s) =>

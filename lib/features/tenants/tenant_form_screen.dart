@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:printing/printing.dart';
 
 import '../../core/format.dart';
 import '../../core/theme.dart';
@@ -8,6 +9,8 @@ import '../../data/calculations.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
 import '../../widgets/common.dart';
+import '../../widgets/due_chip.dart';
+import '../reports/report_builder.dart';
 
 /// Add a tenant ([tenantId] == null) or view/edit an existing one.
 class TenantFormScreen extends ConsumerStatefulWidget {
@@ -54,6 +57,7 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;
+    final live = ref.read(tenantsProvider.notifier).byId(_existing?.id);
     final tenant = Tenant(
       id: _existing?.id ?? newId(),
       name: _name.text.trim(),
@@ -62,8 +66,10 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
       rent: double.parse(_rent.text.trim()),
       deposit: double.tryParse(_deposit.text.trim()) ?? 0,
       joinDate: _joinDate,
-      leaveDate: _existing?.leaveDate,
+      leaveDate: live?.leaveDate,
       notes: _notes.text.trim(),
+      createdAt: _existing?.createdAt ?? DateTime.now(),
+      settlement: live?.settlement,
     );
     ref.read(tenantsProvider.notifier).save(tenant);
     showSaved(context,
@@ -72,23 +78,22 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
   }
 
   Future<void> _toggleMoveOut() async {
-    final t = _existing!;
     final store = ref.read(tenantsProvider.notifier);
+    final t = store.byId(_existing!.id)!;
     if (t.isActive) {
-      final ok = await confirmDialog(context,
-          title: 'Mark ${t.name} as moved out?',
-          message:
-              'Their bed becomes vacant. Payment history is kept for reports.',
-          confirmLabel: 'Move out',
-          destructive: false);
-      if (!ok || !mounted) return;
-      store.save(t.copyWith(leaveDate: DateTime.now()));
-      showSaved(context, '${t.name} marked as moved out');
-    } else {
-      store.save(t.copyWith(clearLeaveDate: true));
-      showSaved(context, '${t.name} is staying again');
+      // Settlement: advance − pending rent − deductions = refund.
+      context.push('/tenants/${t.id}/move-out');
+      return;
     }
-    context.pop();
+    final ok = await confirmDialog(context,
+        title: 'Move ${t.name} back in?',
+        message: 'The move-out settlement record will be removed. '
+            'Rent already adjusted from the advance stays recorded as paid.',
+        confirmLabel: 'Move back in',
+        destructive: false);
+    if (!ok || !mounted) return;
+    store.save(t.copyWith(clearLeaveDate: true, clearSettlement: true));
+    showSaved(context, '${t.name} is staying again');
   }
 
   Future<void> _delete() async {
@@ -246,12 +251,19 @@ class _TenantActions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final month = monthOf(DateTime.now());
+    ref.watch(tenantsProvider);
+    final tenant =
+        ref.read(tenantsProvider.notifier).byId(this.tenant.id) ?? this.tenant;
+    final month = ref.watch(currentRentMonthProvider);
     final dues = ref.watch(monthSummaryProvider(month)).dues;
     TenantDue? due;
     for (final d in dues) {
       if (d.tenant.id == tenant.id) due = d;
     }
+    final olderOverdue = ref
+        .watch(overdueProvider)
+        .where((d) => d.tenant.id == tenant.id && !sameMonth(d.month, month))
+        .toList();
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Card(
@@ -270,11 +282,37 @@ class _TenantActions extends ConsumerWidget {
                       'Moved out ${tenant.leaveDate == null ? '' : fmtDate(tenant.leaveDate!)}',
                       color: Colors.grey)
                 else if (due != null)
-                  due.isPaid
-                      ? const StatusChip('Paid', color: AppColors.success)
-                      : StatusChip('Due ${money(due.due)}',
-                          color: AppColors.warning),
+                  DueChip(due),
               ]),
+              if (due != null && !due.isPaid && tenant.isActive) ...[
+                const SizedBox(height: 4),
+                Text('${money(due.due)} to pay · due by ${fmtDate(due.dueDate)}',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+              for (final d in olderOverdue)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: InkWell(
+                    onTap: () => context.push(
+                        '/payments/new?tenant=${tenant.id}&month=${d.month.toIso8601String()}'),
+                    child: Row(children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          size: 18, color: Color(0xFFDC2626)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                            '${fmtMonth(d.month)}: ${money(d.due)} overdue',
+                            style: const TextStyle(
+                                color: Color(0xFFDC2626),
+                                fontWeight: FontWeight.w600)),
+                      ),
+                      const Text('Collect',
+                          style: TextStyle(
+                              color: Color(0xFFDC2626),
+                              fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                ),
               const SizedBox(height: 12),
               Row(children: [
                 if (tenant.isActive) ...[
@@ -304,6 +342,8 @@ class _TenantActions extends ConsumerWidget {
                   ),
                 ),
               ]),
+              if (tenant.settlement != null)
+                _SettlementSummary(tenant: tenant),
             ],
           ),
         ),
@@ -351,6 +391,62 @@ class _PaymentHistory extends ConsumerWidget {
             ]),
           ),
       ],
+    );
+  }
+}
+
+/// Shown on a moved-out tenant: how the advance was settled.
+class _SettlementSummary extends ConsumerWidget {
+  const _SettlementSummary({required this.tenant});
+  final Tenant tenant;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = tenant.settlement!;
+    Widget line(String a, String b, {Color? color}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(children: [
+            Expanded(child: Text(a)),
+            Text(b, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+          ]),
+        );
+    const red = Color(0xFFDC2626);
+    final owes = s.stillOwed > 0;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Move-out settlement · ${fmtDate(s.date)}',
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          line('Advance held', money(s.deposit)),
+          if (s.collectedNow > 0) line('+ Cash collected', money(s.collectedNow)),
+          if (s.rentAdjusted > 0)
+            line('− Rent (${s.rentMonths.join(', ')})', money(s.rentAdjusted),
+                color: red),
+          for (final d in s.deductions)
+            line('− ${d.label}', money(d.amount), color: red),
+          const Divider(),
+          line(owes ? 'Still to collect' : 'Refunded to tenant',
+              money(owes ? s.stillOwed : s.refund),
+              color: owes ? red : AppColors.success),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final room = ref.read(roomsProvider.notifier).byId(tenant.roomId);
+              final bytes = await buildSettlementPdf(
+                  ref.read(profileProvider), tenant, room?.number);
+              await Printing.sharePdf(
+                  bytes: bytes,
+                  filename:
+                      'Settlement_${tenant.name.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')}.pdf');
+            },
+            icon: const Icon(Icons.download_rounded, size: 18),
+            label: const Text('Download settlement PDF'),
+          ),
+        ],
+      ),
     );
   }
 }

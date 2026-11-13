@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../data/calculations.dart';
 import '../../data/store.dart';
 import '../../widgets/common.dart';
+import '../../widgets/due_chip.dart';
 
 class PaymentsScreen extends ConsumerStatefulWidget {
   const PaymentsScreen({super.key});
@@ -16,7 +17,8 @@ class PaymentsScreen extends ConsumerStatefulWidget {
 }
 
 class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
-  DateTime _month = monthOf(DateTime.now());
+  // Starts on the rent month being collected now.
+  late DateTime _month = ref.read(currentRentMonthProvider);
   bool _showDues = true;
 
   @override
@@ -47,6 +49,39 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                 MonthSwitcher(
                     month: _month,
                     onChanged: (m) => setState(() => _month = m)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  const Icon(Icons.event_available_rounded, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Collect from ${fmtDate(s.collectFrom)} · due by ${fmtDate(s.dueDate)}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ]),
+                if (s.overdue.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDC2626),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: Colors.white),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '${s.overdue.length} overdue · ${money(s.overdueAmount)} not paid after ${fmtDate(s.dueDate)}',
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(
@@ -101,6 +136,14 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                     ),
                   for (final d in s.dues) ...[
                     Card(
+                      color: d.isOverdue
+                          ? const Color(0xFFDC2626).withValues(alpha: 0.06)
+                          : null,
+                      shape: d.isOverdue
+                          ? RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: const BorderSide(color: Color(0xFFDC2626)))
+                          : null,
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 4),
@@ -108,20 +151,28 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                         leading: CircleAvatar(child: Text(initials(d.tenant.name))),
                         title: Text(d.tenant.name,
                             maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(
-                          '${rooms.byId(d.tenant.roomId) == null ? 'No room' : 'Room ${rooms.byId(d.tenant.roomId)!.number}'}'
-                          ' · Paid ${money(d.paid)} of ${money(d.tenant.rent)}',
-                          maxLines: 2,
+                        isThreeLine: true,
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${rooms.byId(d.tenant.roomId) == null ? 'No room' : 'Room ${rooms.byId(d.tenant.roomId)!.number}'}'
+                              ' · Paid ${money(d.paid)} of ${money(d.tenant.rent)}',
+                              maxLines: 2,
+                            ),
+                            const SizedBox(height: 4),
+                            DueChip(d),
+                          ],
                         ),
                         trailing: d.isPaid
-                            ? const StatusChip('Paid', color: AppColors.success)
+                            ? null
                             : FilledButton.tonal(
                                 style: FilledButton.styleFrom(
                                     minimumSize: const Size(0, 36),
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 14)),
                                 onPressed: () => context.push(
-                                    '/payments/new?tenant=${d.tenant.id}'),
+                                    '/payments/new?tenant=${d.tenant.id}&month=${_month.toIso8601String()}'),
                                 child: const Text('Collect'),
                               ),
                       ),

@@ -16,7 +16,8 @@ class ReportData {
     required this.tenants,
     required this.payments,
     required this.expenses,
-  }) : summary = summarize(month, rooms, tenants, payments, expenses);
+  }) : summary = summarize(month, rooms, tenants, payments, expenses,
+            rules: RentRules.of(profile));
 
   final DateTime month;
   final PgProfile profile;
@@ -134,6 +135,9 @@ pw.Widget _header(ReportData d, ReportType type) {
             pw.Text(type == ReportType.tenants
                 ? 'As of ${fmtDate(DateTime.now())}'
                 : fmtMonth(d.month)),
+            if (type == ReportType.rent || type == ReportType.summary)
+              pw.Text('Rent due by ${fmtDate(d.summary.dueDate)}',
+                  style: const pw.TextStyle(fontSize: 9, color: _muted)),
           ],
         ),
       ],
@@ -237,17 +241,23 @@ List<pw.Widget> _summary(ReportData d) {
         align: right,
         totalRow: ['Total expenses', moneyPdf(s.expenses)],
       ),
-    _title('Pending rent (${s.unpaid.length} tenants)'),
+    _title('Pending rent (${s.unpaid.length} tenants, ${s.overdue.length} overdue)'),
     if (s.unpaid.isEmpty)
       _empty('All rent collected for this month.')
     else
       _table(
-        ['Tenant', 'Room', 'Phone', 'Due'],
+        ['Tenant', 'Room', 'Phone', 'Status', 'Due'],
         [
           for (final u in s.unpaid)
-            [u.tenant.name, d.roomOf(u.tenant), u.tenant.phone, moneyPdf(u.due)]
+            [
+              u.tenant.name,
+              d.roomOf(u.tenant),
+              u.tenant.phone,
+              u.isOverdue ? 'OVERDUE ${u.daysOverdue}d' : 'Due ${fmtDate(u.dueDate)}',
+              moneyPdf(u.due)
+            ]
         ],
-        align: {3: pw.Alignment.centerRight},
+        align: {4: pw.Alignment.centerRight},
       ),
   ];
 }
@@ -275,7 +285,11 @@ List<pw.Widget> _rent(ReportData d) {
               moneyPdf(x.tenant.rent),
               moneyPdf(x.paid),
               moneyPdf(x.due),
-              x.isPaid ? 'Paid' : (x.paid > 0 ? 'Partial' : 'Unpaid'),
+              x.isPaid
+                  ? 'Paid'
+                  : x.isOverdue
+                      ? 'OVERDUE ${x.daysOverdue}d'
+                      : (x.paid > 0 ? 'Partial' : 'Not paid yet'),
             ]
         ],
         align: {
@@ -388,4 +402,96 @@ List<pw.Widget> _tenants(ReportData d) {
         align: {5: pw.Alignment.centerRight, 6: pw.Alignment.centerRight},
       ),
   ];
+}
+
+/// One-page move-out settlement receipt to give the tenant.
+Future<Uint8List> buildSettlementPdf(
+    PgProfile profile, Tenant tenant, String? roomNumber) async {
+  final s = tenant.settlement!;
+  final doc = pw.Document(title: 'Settlement - ${tenant.name}');
+  pw.Widget row(String a, String b, {bool bold = false, PdfColor? color}) =>
+      pw.Padding(
+        padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 8),
+        child: pw.Row(children: [
+          pw.Expanded(
+              child: pw.Text(a,
+                  style: pw.TextStyle(
+                      fontWeight: bold ? pw.FontWeight.bold : null))),
+          pw.Text(b,
+              style: pw.TextStyle(
+                  fontWeight: bold ? pw.FontWeight.bold : null, color: color)),
+        ]),
+      );
+  final owes = s.stillOwed > 0;
+  doc.addPage(pw.Page(
+    pageFormat: PdfPageFormat.a4,
+    margin: const pw.EdgeInsets.all(40),
+    build: (ctx) => pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Text(profile.pgName.isEmpty ? 'PG Hostel' : profile.pgName,
+            style: pw.TextStyle(
+                fontSize: 20, fontWeight: pw.FontWeight.bold, color: _brand)),
+        if (profile.address.isNotEmpty)
+          pw.Text(profile.address,
+              style: const pw.TextStyle(fontSize: 10, color: _muted)),
+        if (profile.phone.isNotEmpty)
+          pw.Text('+91 ${profile.phone}',
+              style: const pw.TextStyle(fontSize: 10, color: _muted)),
+        pw.Divider(color: _brand, thickness: 2),
+        pw.SizedBox(height: 8),
+        pw.Text('Move-out Settlement',
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 12),
+        pw.Container(
+          padding: const pw.EdgeInsets.all(10),
+          decoration: pw.BoxDecoration(
+              color: _light, borderRadius: pw.BorderRadius.circular(6)),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('Tenant: ${tenant.name}'),
+              pw.Text('Mobile: +91 ${tenant.phone}'),
+              if (roomNumber != null) pw.Text('Room: $roomNumber'),
+              pw.Text('Joined: ${fmtDate(tenant.joinDate)}'),
+              pw.Text('Moved out: ${fmtDate(s.date)}'),
+            ],
+          ),
+        ),
+        pw.SizedBox(height: 16),
+        row('Advance / deposit held', moneyPdf(s.deposit)),
+        if (s.collectedNow > 0)
+          row('Add: cash collected at move-out', moneyPdf(s.collectedNow)),
+        if (s.rentAdjusted > 0)
+          row('Less: pending rent (${s.rentMonths.join(', ')})',
+              moneyPdf(s.rentAdjusted)),
+        for (final d in s.deductions)
+          row('Less: ${d.label}', moneyPdf(d.amount)),
+        pw.Divider(),
+        row(owes ? 'Balance to be paid by tenant' : 'Amount refunded to tenant',
+            moneyPdf(owes ? s.stillOwed : s.refund),
+            bold: true, color: owes ? PdfColors.red : _green),
+        pw.Spacer(),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Column(children: [
+              pw.SizedBox(width: 150, child: pw.Divider()),
+              pw.Text('Owner signature',
+                  style: const pw.TextStyle(fontSize: 9, color: _muted)),
+            ]),
+            pw.Column(children: [
+              pw.SizedBox(width: 150, child: pw.Divider()),
+              pw.Text('Tenant signature',
+                  style: const pw.TextStyle(fontSize: 9, color: _muted)),
+            ]),
+          ],
+        ),
+        pw.SizedBox(height: 8),
+        pw.Text('Generated on ${fmtDate(DateTime.now())}',
+            style: const pw.TextStyle(fontSize: 8, color: _muted)),
+      ],
+    ),
+  ));
+  return doc.save();
 }

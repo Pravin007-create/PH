@@ -10,9 +10,13 @@ import '../../widgets/common.dart';
 
 /// Record a payment ([paymentId] == null) or edit an existing one.
 class PaymentFormScreen extends ConsumerStatefulWidget {
-  const PaymentFormScreen({super.key, this.paymentId, this.tenantId});
+  const PaymentFormScreen(
+      {super.key, this.paymentId, this.tenantId, this.month});
   final String? paymentId;
   final String? tenantId;
+
+  /// Rent month to pay for (e.g. an older overdue month).
+  final DateTime? month;
 
   @override
   ConsumerState<PaymentFormScreen> createState() => _PaymentFormScreenState();
@@ -24,7 +28,11 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
       ref.read(paymentsProvider.notifier).byId(widget.paymentId);
   late String? _tenantId = _existing?.tenantId ?? widget.tenantId;
   late PaymentType _type = _existing?.type ?? PaymentType.rent;
-  late DateTime _month = _existing?.month ?? monthOf(DateTime.now());
+  // Defaults to the rent month being collected now (October on 3 Nov for an
+  // end-of-month PG).
+  late DateTime _month = _existing?.month ??
+      (widget.month == null ? null : monthOf(widget.month!)) ??
+      ref.read(currentRentMonthProvider);
   late DateTime _date = _existing?.date ?? DateTime.now();
   late String _mode = _existing?.mode ?? 'Cash';
   late final TextEditingController _amount;
@@ -44,9 +52,9 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
   String _suggestedAmount() {
     final tenant = ref.read(tenantsProvider.notifier).byId(_tenantId);
     if (tenant == null || _type != PaymentType.rent) return '';
-    final status = rentStatusFor(
-        _month, [tenant], ref.read(paymentsProvider));
-    final due = status.isEmpty ? tenant.rent : status.first.due;
+    final due = dueOf(tenant, _month, ref.read(paymentsProvider),
+            ref.read(rentRulesProvider), DateTime.now())
+        .due;
     return due > 0 ? due.toStringAsFixed(0) : '';
   }
 
