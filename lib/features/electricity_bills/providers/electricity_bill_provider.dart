@@ -1,5 +1,5 @@
 import 'package:pg_hostel_management/features/electricity_bills/models/electricity_bill.dart';
-import 'package:riverpod_state_notifier/riverpod_state_notifier.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/securestorage/securestorage_service.dart';
 
 final electricityBillProvider = StateNotifierProvider<ElectricityBillNotifier, List<ElectricityBill>>((ref) {

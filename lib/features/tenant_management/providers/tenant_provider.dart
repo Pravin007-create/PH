@@ -1,5 +1,5 @@
 import 'package:pg_hostel_management/features/tenant_management/models/tenant.dart';
-import 'package:riverpod_state_notifier/riverpod_state_notifier.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/securestorage/securestorage_service.dart';
 
 final tenantProvider = StateNotifierProvider<TenantNotifier, List<Tenant>>((ref) {

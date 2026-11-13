@@ -1,4 +1,3 @@
-import 'package:validatorator/validatorator.dart';
 
 class ValidationUtils {
   static String? validateName(String? value) {
@@ -59,8 +58,8 @@ class ValidationUtils {
     if (value == null || value.isEmpty) {
       return 'Rent amount is required';
     }
-    final double? = double.tryParse(value);
-    if ( == null || <= 0) {
+    final double? amount = double.tryParse(value);
+    if (amount == null || amount <= 0) {
       return 'Enter a valid rent amount';
     }
     return null;
@@ -70,8 +69,8 @@ class ValidationUtils {
     if (value == null || value.isEmpty) {
       return 'Expense amount is required';
     }
-    final double? = double.tryParse(value);
-    if ( == null || <= 0) {
+    final double? amount = double.tryParse(value);
+    if (amount == null || amount <= 0) {
       return 'Enter a valid expense amount';
     }
     return null;

@@ -23,6 +23,13 @@ jobs:
         with:
           channel: stable
 
+      - name: Generate Android platform files (if missing)
+        run: |
+          if [ ! -d android ]; then
+            flutter create --platforms=android --project-name pg_hostel_management --org com.pghostel .
+            rm -f test/widget_test.dart
+          fi
+
       - name: Install dependencies
         run: flutter pub get
 
