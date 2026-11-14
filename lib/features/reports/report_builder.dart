@@ -67,7 +67,7 @@ const _light = PdfColor.fromInt(0xFFF3F4F6);
 Future<Uint8List> buildReport(ReportType type, ReportData d) async {
   final doc = pw.Document(
     title: '${type.title} - ${fmtMonth(d.month)}',
-    author: d.profile.pgName.isEmpty ? 'PG Hostel Manager' : d.profile.pgName,
+    author: d.profile.pgName.isEmpty ? 'PG Management' : d.profile.pgName,
   );
 
   final content = switch (type) {
@@ -109,7 +109,7 @@ pw.Widget _header(ReportData d, ReportType type) {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text(p.pgName.isEmpty ? 'PG Hostel' : p.pgName,
+              pw.Text(p.pgName.isEmpty ? 'PG Management' : p.pgName,
                   style: pw.TextStyle(
                       fontSize: 18,
                       fontWeight: pw.FontWeight.bold,
@@ -429,7 +429,7 @@ Future<Uint8List> buildSettlementPdf(
     build: (ctx) => pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.Text(profile.pgName.isEmpty ? 'PG Hostel' : profile.pgName,
+        pw.Text(profile.pgName.isEmpty ? 'PG Management' : profile.pgName,
             style: pw.TextStyle(
                 fontSize: 20, fontWeight: pw.FontWeight.bold, color: _brand)),
         if (profile.address.isNotEmpty)

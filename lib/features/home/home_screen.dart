@@ -298,7 +298,7 @@ class _Header extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    profile.pgName.isEmpty ? 'PG Hostel Manager' : profile.pgName,
+                    profile.pgName.isEmpty ? 'PG Management' : profile.pgName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -307,9 +307,13 @@ class _Header extends StatelessWidget {
                 ],
               ),
             ),
-            CircleAvatar(
-              backgroundColor: Colors.white.withValues(alpha: 0.2),
-              child: const Icon(Icons.apartment_rounded, color: white),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+              ),
+              child: Image.asset('assets/branding/app_icon_512.png',
+                  width: 44, height: 44, semanticLabel: 'PG Management logo'),
             ),
           ]),
           const SizedBox(height: 20),

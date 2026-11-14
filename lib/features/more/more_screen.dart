@@ -28,8 +28,8 @@ class MoreScreen extends ConsumerWidget {
       await file.writeAsString(json);
       await SharePlus.instance.share(ShareParams(
         files: [XFile(file.path, mimeType: 'application/json', name: name)],
-        subject: 'PG Hostel backup',
-        text: 'PG Hostel backup – keep this file safe. '
+        subject: 'PG Management backup',
+        text: 'PG Management backup – keep this file safe. '
             'Use "Import data" in the app to restore it.',
       ));
     } catch (e) {
@@ -143,7 +143,7 @@ class MoreScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Text('PG Hostel Manager · v1.0.0',
+                Text('PG Management · v1.0.0',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall),
               ],

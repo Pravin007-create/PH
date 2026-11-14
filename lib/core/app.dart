@@ -23,7 +23,7 @@ class _PGHostelAppState extends State<PGHostelApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'PG Hostel Manager',
+      title: 'PG Management',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),

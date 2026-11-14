@@ -68,7 +68,7 @@ Map<String, dynamic> _parse(String json) {
     throw BackupException('This is not a valid backup file.');
   }
   if (data is! Map || data['format'] != backupFormat) {
-    throw BackupException('This file is not a PG Hostel backup.');
+    throw BackupException('This file is not a PG Management backup.');
   }
   final map = Map<String, dynamic>.from(data);
   // Check every record can be read before anything is replaced.

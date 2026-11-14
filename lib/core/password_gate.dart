@@ -73,15 +73,17 @@ class _PasswordGateState extends State<PasswordGate> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          CircleAvatar(
-                            radius: 36,
-                            backgroundColor: scheme.primaryContainer,
-                            child: Icon(Icons.apartment_rounded,
-                                size: 36, color: scheme.primary),
+                          Center(
+                            child: Image.asset(
+                              'assets/branding/app_icon_512.png',
+                              width: 80,
+                              height: 80,
+                              semanticLabel: 'PG Management logo',
+                            ),
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'PG Hostel Manager',
+                            'PG Management',
                             textAlign: TextAlign.center,
                             style: Theme.of(context)
                                 .textTheme

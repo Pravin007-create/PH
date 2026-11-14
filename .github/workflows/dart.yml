@@ -56,6 +56,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Set app name and launcher icon
+        run: |
+          sed -i 's/android:label="[^"]*"/android:label="PG Management"/' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:label="PG Management"' android/app/src/main/AndroidManifest.xml || { echo "App name was not set"; exit 1; }
+          dart run flutter_launcher_icons
+
       - name: Check Flutter code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
