@@ -146,6 +146,10 @@ class Tenant {
 
   /// Set when the tenant moves out. Null = currently staying.
   final DateTime? leaveDate;
+
+  /// Planned last day of stay (notice given). Optional; the bed is shown as
+  /// vacant from the next day. The tenant stays active until moved out.
+  final DateTime? relievingDate;
   final String notes;
 
   /// When the tenant was added to the app. Unpaid rent from months before
@@ -164,12 +168,19 @@ class Tenant {
     this.deposit = 0,
     required this.joinDate,
     this.leaveDate,
+    this.relievingDate,
     this.notes = '',
     this.createdAt,
     this.settlement,
   });
 
   bool get isActive => leaveDate == null;
+
+  /// First day the bed is free: the day after the relieving date.
+  DateTime? get vacantFrom => relievingDate == null
+      ? null
+      : DateTime(
+          relievingDate!.year, relievingDate!.month, relievingDate!.day + 1);
 
   /// createdAt, or recovered from the id (ids are creation timestamps).
   DateTime get addedOn {
@@ -186,6 +197,7 @@ class Tenant {
     bool clearLeaveDate = false,
     Settlement? settlement,
     bool clearSettlement = false,
+    bool clearRelievingDate = false,
   }) =>
       Tenant(
         id: id,
@@ -196,6 +208,7 @@ class Tenant {
         deposit: deposit,
         joinDate: joinDate,
         leaveDate: clearLeaveDate ? null : (leaveDate ?? this.leaveDate),
+        relievingDate: clearRelievingDate ? null : relievingDate,
         notes: notes,
         createdAt: createdAt,
         settlement: clearSettlement ? null : (settlement ?? this.settlement),
@@ -210,6 +223,7 @@ class Tenant {
         'deposit': deposit,
         'joinDate': joinDate.toIso8601String(),
         'leaveDate': leaveDate?.toIso8601String(),
+        'relievingDate': relievingDate?.toIso8601String(),
         'notes': notes,
         'createdAt': createdAt?.toIso8601String(),
         'settlement': settlement?.toJson(),
@@ -226,6 +240,9 @@ class Tenant {
         leaveDate: j['leaveDate'] == null
             ? null
             : DateTime.parse(j['leaveDate'] as String),
+        relievingDate: j['relievingDate'] == null
+            ? null
+            : DateTime.parse(j['relievingDate'] as String),
         notes: (j['notes'] ?? '') as String,
         createdAt: j['createdAt'] == null
             ? null

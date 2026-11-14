@@ -9,6 +9,8 @@ import '../../data/store.dart';
 import '../../widgets/common.dart';
 import '../../widgets/due_chip.dart';
 
+enum _Tab { rent, electricity, payments }
+
 class PaymentsScreen extends ConsumerStatefulWidget {
   const PaymentsScreen({super.key});
 
@@ -19,7 +21,7 @@ class PaymentsScreen extends ConsumerStatefulWidget {
 class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
   // Starts on the rent month being collected now.
   late DateTime _month = ref.read(currentRentMonthProvider);
-  bool _showDues = true;
+  _Tab _tab = _Tab.rent;
 
   @override
   Widget build(BuildContext context) {
@@ -118,23 +120,37 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
                       style: Theme.of(context).textTheme.bodySmall),
                 ],
                 const SizedBox(height: 16),
-                SegmentedButton<bool>(
-                  segments: [
+                SegmentedButton<_Tab>(
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    padding: WidgetStatePropertyAll(
+                        EdgeInsets.symmetric(horizontal: 4)),
+                  ),
+                  segments: const [
                     ButtonSegment(
-                        value: true,
-                        label: Text('Rent status (${s.dues.length})'),
-                        icon: const Icon(Icons.fact_check_outlined)),
+                        value: _Tab.rent,
+                        tooltip: 'Rent status',
+                        label: Text('Rent'),
+                        icon: Icon(Icons.fact_check_outlined, size: 18)),
                     ButtonSegment(
-                        value: false,
-                        label: Text('Payments (${payments.length})'),
-                        icon: const Icon(Icons.receipt_long_outlined)),
+                        value: _Tab.electricity,
+                        tooltip: 'Electricity bills',
+                        label: Text('Electricity'),
+                        icon: Icon(Icons.bolt_rounded, size: 18)),
+                    ButtonSegment(
+                        value: _Tab.payments,
+                        tooltip: 'Payments received',
+                        label: Text('Payments'),
+                        icon: Icon(Icons.receipt_long_outlined, size: 18)),
                   ],
-                  selected: {_showDues},
-                  onSelectionChanged: (v) =>
-                      setState(() => _showDues = v.first),
+                  selected: {_tab},
+                  onSelectionChanged: (v) => setState(() => _tab = v.first),
                 ),
                 const SizedBox(height: 12),
-                if (_showDues) ...[
+                if (_tab == _Tab.electricity)
+                  _ElectricityTab(month: _month)
+                else if (_tab == _Tab.rent) ...[
                   if (s.dues.isEmpty)
                     const EmptyState(
                       icon: Icons.people_outline_rounded,
@@ -223,6 +239,125 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Electricity bills for the month: each tenant's share, paid or pending.
+class _ElectricityTab extends ConsumerWidget {
+  const _ElectricityTab({required this.month});
+  final DateTime month;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    const red = Color(0xFFDC2626);
+    final rooms = ref.watch(roomsProvider);
+    final bills = ref.watch(electricityBillsProvider);
+    final shares = electricityShares(
+        bills, ref.watch(tenantsProvider), ref.watch(paymentsProvider));
+    final thisMonth = shares.where((d) => sameMonth(d.month, month)).toList();
+    final older = shares
+        .where((d) => !d.isPaid && d.month.isBefore(month))
+        .toList();
+    final billed = bills
+        .where((b) => sameMonth(b.month, month))
+        .fold<double>(0, (a, b) => a + b.amount);
+    final collected = thisMonth.fold<double>(0, (a, d) => a + d.paid);
+    final pending = thisMonth.fold<double>(0, (a, d) => a + d.due);
+    String roomNo(String id) =>
+        rooms.where((r) => r.id == id).firstOrNull?.number ?? '-';
+
+    Widget shareTile(ElectricityDue d, {bool showMonth = false}) => ListTile(
+          onTap: () => context.push('/tenants/${d.tenant.id}'),
+          leading: CircleAvatar(child: Text(initials(d.tenant.name))),
+          title: Text(d.tenant.name,
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+              'Room ${roomNo(d.bill.roomId)}${showMonth ? ' · ${fmtMonthShort(d.month)}' : ''}'
+              ' · share ${money(d.share)}'),
+          trailing: d.isPaid
+              ? const StatusChip('Paid', color: AppColors.success)
+              : FilledButton.tonal(
+                  style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 36),
+                      padding: const EdgeInsets.symmetric(horizontal: 12)),
+                  onPressed: () => context.push(
+                      '/payments/new?tenant=${d.tenant.id}&type=electricity'
+                      '&month=${d.month.toIso8601String()}'),
+                  child: Text('Collect ${money(d.due)}'),
+                ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(children: [
+          Expanded(
+            child: StatCard(
+              icon: Icons.bolt_rounded,
+              label: 'Collected',
+              value: money(collected),
+              caption: 'of ${money(billed)} billed',
+              color: AppColors.success,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: StatCard(
+              icon: Icons.pending_actions_rounded,
+              label: 'Pending',
+              value: money(pending),
+              caption:
+                  '${thisMonth.where((d) => !d.isPaid).length} tenants',
+              color: pending > 0 ? red : AppColors.warning,
+            ),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        if (thisMonth.isEmpty)
+          EmptyState(
+            icon: Icons.bolt_rounded,
+            title: 'No electricity bills for ${fmtMonth(month)}',
+            message: 'Open a room with "Electricity bill separate" ticked '
+                'and tap "Add Electricity Bill +".',
+          )
+        else
+          for (final roomId in {for (final d in thisMonth) d.bill.roomId}) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 4, 6),
+              child: Row(children: [
+                Expanded(
+                  child: Text('Room ${roomNo(roomId)}',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                TextButton(
+                  onPressed: () => context.push('/rooms/$roomId'),
+                  child: Text('Bill ${money(bills.where((b) => b.roomId == roomId && sameMonth(b.month, month)).fold<double>(0, (a, b) => a + b.amount))}'),
+                ),
+              ]),
+            ),
+            Card(
+              child: Column(children: [
+                for (final d in thisMonth.where((d) => d.bill.roomId == roomId))
+                  shareTile(d),
+              ]),
+            ),
+            const SizedBox(height: 8),
+          ],
+        if (older.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+            child: Text(
+                'Pending from earlier months · ${money(older.fold<double>(0, (a, d) => a + d.due))}',
+                style: const TextStyle(color: red, fontWeight: FontWeight.w700)),
+          ),
+          Card(
+            child: Column(children: [
+              for (final d in older) shareTile(d, showMonth: true),
+            ]),
+          ),
+        ],
+      ],
     );
   }
 }

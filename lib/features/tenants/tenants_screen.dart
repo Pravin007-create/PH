@@ -130,6 +130,8 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
                                     ? 'No room'
                                     : 'Room ${rooms.byId(t.roomId)!.number}',
                                 money(t.rent),
+                                if (t.isActive && t.relievingDate != null)
+                                  'Leaving ${fmtDate(t.relievingDate!)}',
                               ].join(' · '),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,

@@ -39,6 +39,7 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
   late final _notes = TextEditingController(text: _existing?.notes);
   late String? _roomId = _existing?.roomId ?? widget.roomId;
   late DateTime _joinDate = _existing?.joinDate ?? DateTime.now();
+  late DateTime? _relievingDate = _existing?.relievingDate;
 
   bool get _isEdit => _existing != null;
 
@@ -55,6 +56,7 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
       _notes.text = t.notes;
       _roomId = t.roomId;
       _joinDate = t.joinDate;
+      _relievingDate = t.relievingDate;
       _editing = false;
     });
   }
@@ -83,6 +85,7 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
       rent: double.parse(_rent.text.trim()),
       deposit: double.tryParse(_deposit.text.trim()) ?? 0,
       joinDate: _joinDate,
+      relievingDate: _relievingDate,
       leaveDate: live?.leaveDate,
       notes: _notes.text.trim(),
       createdAt: live?.createdAt ?? DateTime.now(),
@@ -113,7 +116,8 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
         confirmLabel: 'Move back in',
         destructive: false);
     if (!ok || !mounted) return;
-    store.save(t.copyWith(clearLeaveDate: true, clearSettlement: true));
+    store.save(t.copyWith(
+        clearLeaveDate: true, clearSettlement: true, clearRelievingDate: true));
     showSaved(context, '${t.name} is staying again');
   }
 
@@ -133,6 +137,13 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
     final rooms = [...ref.watch(roomsProvider)]
       ..sort((a, b) => a.number.compareTo(b.number));
     final occupancy = occupancyByRoom(ref.watch(tenantsProvider));
+    // Earliest date a bed frees up in each room (someone else leaving).
+    final leavingByRoom = <String, DateTime>{};
+    for (final t in upcomingVacancies(ref.watch(tenantsProvider))) {
+      if (t.roomId != null && t.id != _existing?.id) {
+        leavingByRoom.putIfAbsent(t.roomId!, () => t.vacantFrom!);
+      }
+    }
     final live = _isEdit
         ? ref
             .watch(tenantsProvider)
@@ -255,12 +266,14 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
                               for (final r in rooms)
                                 DropdownMenuItem(
                                   value: r.id,
-                                  // A full room can still be chosen if it's this tenant's room.
+                                  // A full room can still be chosen if it's this
+                                  // tenant's room, or someone in it is leaving.
                                   enabled: (occupancy[r.id] ?? 0) < r.beds ||
-                                      r.id == _existing?.roomId,
+                                      r.id == _existing?.roomId ||
+                                      leavingByRoom.containsKey(r.id),
                                   child: Text(
                                     'Room ${r.number}  ·  ${occupancy[r.id] ?? 0}/${r.beds} filled'
-                                    '${(occupancy[r.id] ?? 0) >= r.beds && r.id != _existing?.roomId ? '  (full)' : ''}',
+                                    '${(occupancy[r.id] ?? 0) < r.beds || r.id == _existing?.roomId ? '' : leavingByRoom.containsKey(r.id) ? '  (free from ${fmtDate(leavingByRoom[r.id]!)})' : '  (full)'}',
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
@@ -299,6 +312,19 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
                             label: 'Joining date',
                             value: _joinDate,
                             onChanged: (d) => setState(() => _joinDate = d),
+                          ),
+                          const SizedBox(height: 14),
+                          OptionalDateField(
+                            label: 'Relieving date (optional)',
+                            value: _relievingDate,
+                            firstDate: _joinDate,
+                            emptyText: 'Not leaving',
+                            helperText: _relievingDate == null
+                                ? 'Set when the tenant gives notice'
+                                : 'Bed will be shown vacant from '
+                                    '${fmtDate(_relievingDate!.add(const Duration(days: 1)))}',
+                            onChanged: (d) =>
+                                setState(() => _relievingDate = d),
                           ),
                           const SizedBox(height: 14),
                           TextFormField(
@@ -367,6 +393,9 @@ class _TenantInfo extends ConsumerWidget {
                 tenant.deposit == 0 ? '—' : money(tenant.deposit)),
             info(Icons.calendar_today_rounded, 'Joined',
                 fmtDate(tenant.joinDate)),
+            if (tenant.isActive && tenant.relievingDate != null)
+              info(Icons.event_busy_rounded, 'Relieving date',
+                  fmtDate(tenant.relievingDate!)),
             if (tenant.leaveDate != null)
               info(Icons.logout_rounded, 'Moved out',
                   fmtDate(tenant.leaveDate!)),
@@ -428,6 +457,8 @@ class _TenantActions extends ConsumerWidget {
                 else if (due != null)
                   DueChip(due),
               ]),
+              if (tenant.isActive && tenant.relievingDate != null)
+                _RelievingBanner(tenant: tenant),
               if (due != null && !due.isPaid && tenant.isActive) ...[
                 const SizedBox(height: 4),
                 Text(
@@ -616,6 +647,46 @@ class _SettlementSummary extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// "Leaving on 30 Nov · bed free from 1 Dec" or, once the date has passed,
+/// a red reminder to finish the move-out.
+class _RelievingBanner extends StatelessWidget {
+  const _RelievingBanner({required this.tenant});
+  final Tenant tenant;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = dateOnly(DateTime.now());
+    final date = dateOnly(tenant.relievingDate!);
+    final pending = moveOutPending(tenant, today);
+    final days = date.difference(today).inDays;
+    final color = pending ? const Color(0xFFDC2626) : AppColors.purple;
+    final text = pending
+        ? 'Relieving date ${fmtDate(date)} has passed. Tap "Move out" to settle the advance.'
+        : days == 0
+            ? 'Leaving today · bed free from ${fmtDate(tenant.vacantFrom!)}'
+            : 'Leaving on ${fmtDate(date)} (in $days day${days == 1 ? '' : 's'}) · '
+                'bed free from ${fmtDate(tenant.vacantFrom!)}';
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(children: [
+        Icon(pending ? Icons.warning_amber_rounded : Icons.event_busy_rounded,
+            color: color, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(text,
+              style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+        ),
+      ]),
     );
   }
 }

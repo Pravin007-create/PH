@@ -437,3 +437,60 @@ void showSaved(BuildContext context, String message) {
       ]),
     ));
 }
+
+/// Date field that can be left empty (shows [emptyText]) and cleared.
+class OptionalDateField extends StatelessWidget {
+  const OptionalDateField({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.emptyText = 'Not set',
+    this.helperText,
+    this.firstDate,
+  });
+  final String label;
+  final DateTime? value;
+  final ValueChanged<DateTime?> onChanged;
+  final String emptyText;
+  final String? helperText;
+  final DateTime? firstDate;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () async {
+          final now = DateTime.now();
+          final first = firstDate ?? DateTime(2015);
+          var initial = value ?? now;
+          if (initial.isBefore(first)) initial = first;
+          final picked = await showDatePicker(
+            context: context,
+            initialDate: initial,
+            firstDate: first,
+            lastDate: now.add(const Duration(days: 730)),
+          );
+          if (picked != null) onChanged(picked);
+        },
+        child: InputDecorator(
+          decoration: InputDecoration(
+            labelText: label,
+            helperText: helperText,
+            prefixIcon: const Icon(Icons.event_busy_rounded),
+            suffixIcon: value == null
+                ? null
+                : IconButton(
+                    tooltip: 'Clear $label',
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => onChanged(null),
+                  ),
+          ),
+          child: Text(
+            value == null ? emptyText : fmtDate(value!),
+            style: value == null
+                ? TextStyle(color: Theme.of(context).hintColor)
+                : null,
+          ),
+        ),
+      );
+}

@@ -478,3 +478,28 @@ List<Tenant> tenantsInRoomFor(
 final electricityDuesProvider = Provider<List<ElectricityDue>>((ref) =>
     electricityDues(ref.watch(electricityBillsProvider),
         ref.watch(tenantsProvider), ref.watch(paymentsProvider)));
+
+// ---------------------------------------------------------------------------
+// Relieving dates → upcoming vacancies
+// ---------------------------------------------------------------------------
+
+/// Staying tenants who gave a relieving date, soonest first.
+List<Tenant> upcomingVacancies(List<Tenant> tenants) => tenants
+    .where((t) => t.isActive && t.relievingDate != null)
+    .toList()
+  ..sort((a, b) => a.relievingDate!.compareTo(b.relievingDate!));
+
+/// Relieving date has passed but the move-out isn't done yet.
+bool moveOutPending(Tenant t, DateTime today) =>
+    t.isActive &&
+    t.relievingDate != null &&
+    dateOnly(today).isAfter(dateOnly(t.relievingDate!));
+
+/// Pending electricity per room id.
+Map<String, double> electricityDueByRoom(List<ElectricityDue> dues) {
+  final m = <String, double>{};
+  for (final d in dues) {
+    m[d.bill.roomId] = (m[d.bill.roomId] ?? 0) + d.due;
+  }
+  return m;
+}

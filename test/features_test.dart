@@ -134,7 +134,7 @@ void main() {
     });
     await w.pumpApp(tester);
     await w.tapOn(tester, find.text('Payments'));
-    await w.tapOn(tester, find.text('Payments (1)')); // segment
+    await w.tapOn(tester, find.byTooltip('Payments received')); // segment
     await w.tapOn(tester, find.textContaining('Rent · '));
 
     expect(find.text('Payment Details'), findsOneWidget);
@@ -356,5 +356,106 @@ void main() {
             .single
             .amount,
         800);
+  });
+
+  group('Rooms list, relieving date, electricity tab', () {
+    final join = DateTime(2026, 1, 1).toIso8601String();
+    final soon = DateTime.now().add(const Duration(days: 10));
+    final soonDay = DateTime(soon.year, soon.month, soon.day);
+    final freeFrom = DateTime(soon.year, soon.month, soon.day + 1);
+    void seed() => SharedPreferences.setMockInitialValues({
+          'rooms': jsonEncode([
+            {'id': 'r1', 'number': '101', 'beds': 2, 'rent': 6000,
+              'isAC': true, 'separateElectricity': true},
+            {'id': 'r2', 'number': '102', 'beds': 3, 'rent': 4000},
+            {'id': 'r3', 'number': '103', 'beds': 1, 'rent': 9000,
+              'isAC': true},
+          ]),
+          'tenants': jsonEncode([
+            {'id': 'a', 'name': 'Asha', 'phone': '9876543210',
+              'roomId': 'r1', 'rent': 6000, 'joinDate': join,
+              'createdAt': join},
+            {'id': 'b', 'name': 'Bala', 'phone': '9876543211',
+              'roomId': 'r1', 'rent': 6000, 'joinDate': join,
+              'createdAt': join, 'relievingDate': soonDay.toIso8601String()},
+          ]),
+          'electricity_bills': jsonEncode([
+            ElectricityBill(
+                    id: 'e1',
+                    roomId: 'r1',
+                    month: DateTime(DateTime.now().year, DateTime.now().month),
+                    amount: 1000,
+                    tenantIds: const ['a', 'b'],
+                    createdAt: DateTime.now())
+                .toJson()
+          ]),
+        });
+
+    testWidgets('Room card shows bill pending + upcoming vacancy; filters work',
+        (tester) async {
+      seed();
+      await w.pumpApp(tester, size: const Size(320, 700));
+      await w.tapOn(tester, find.text('Rooms'));
+      expect(find.text('⚡ Bill ${money(1000)} pending'), findsOneWidget);
+      expect(find.text('1 vacant from ${fmtDate(freeFrom)}'), findsOneWidget);
+
+      await w.tapOn(tester, find.text('Non-AC'));
+      expect(find.text('Room 102'), findsOneWidget);
+      expect(find.text('Room 101'), findsNothing);
+
+      await w.tapOn(tester, find.text('AC'));
+      await w.tapOn(tester, find.text('Single'));
+      expect(find.text('Room 103'), findsOneWidget);
+      expect(find.text('Room 101'), findsNothing);
+
+      await w.tapOn(tester, find.text('Clear filters'));
+      await w.tapOn(tester, find.text('Bill pending'));
+      expect(find.text('Room 101'), findsOneWidget);
+      expect(find.text('Room 102'), findsNothing);
+
+      await w.tapOn(tester, find.text('Vacating soon'));
+      expect(find.text('Room 101'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Relieving date: tenant banner, Home vacancies, move-out date',
+        (tester) async {
+      seed();
+      await w.pumpApp(tester);
+      expect(find.text('Upcoming vacancies (1)'), findsOneWidget);
+      expect(find.text('1 bed free from ${fmtDate(freeFrom)}'), findsOneWidget);
+
+      await w.tapOn(tester, find.text('Tenants'));
+      await w.tapOn(tester, find.text('Bala'));
+      expect(find.textContaining('Leaving on ${fmtDate(soonDay)}'),
+          findsOneWidget);
+      await w.tapOn(tester, find.text('Move out'));
+      expect(find.text(fmtDate(soonDay)), findsOneWidget); // default date
+    });
+
+    testWidgets('Relieving date can be set and cleared in the tenant form',
+        (tester) async {
+      seed();
+      await w.pumpApp(tester);
+      await w.tapOn(tester, find.text('Tenants'));
+      await w.tapOn(tester, find.text('Bala'));
+      await w.tapOn(tester, find.text('Edit'));
+      expect(find.textContaining('Bed will be shown vacant from'), findsOneWidget);
+      await w.tapOn(tester, find.byTooltip('Clear Relieving date (optional)'));
+      await w.tapOn(tester, find.text('Save Changes'));
+      final t = container(tester).read(tenantsProvider.notifier).byId('b')!;
+      expect(t.relievingDate, isNull);
+    });
+
+    testWidgets('Payments → Electricity tab lists shares, fits 320px',
+        (tester) async {
+      seed();
+      await w.pumpApp(tester, size: const Size(320, 700));
+      await w.tapOn(tester, find.text('Payments'));
+      await w.tapOn(tester, find.byTooltip('Electricity bills'));
+      expect(find.text('Room 101'), findsOneWidget);
+      expect(find.text('Collect ${money(500)}'), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    });
   });
 }

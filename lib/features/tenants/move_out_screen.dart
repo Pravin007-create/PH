@@ -48,7 +48,8 @@ class MoveOutScreen extends ConsumerStatefulWidget {
 class _MoveOutScreenState extends ConsumerState<MoveOutScreen> {
   late final Tenant _tenant =
       ref.read(tenantsProvider.notifier).byId(widget.tenantId)!;
-  DateTime _date = dateOnly(DateTime.now());
+  // Defaults to the relieving date the tenant gave, if any.
+  late DateTime _date = dateOnly(_tenant.relievingDate ?? DateTime.now());
   late final _deposit = TextEditingController(
       text: _tenant.deposit == 0 ? '' : _tenant.deposit.toStringAsFixed(0));
   final _collected = TextEditingController();

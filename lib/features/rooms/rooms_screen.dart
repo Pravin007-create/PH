@@ -5,10 +5,15 @@ import 'package:go_router/go_router.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/calculations.dart';
+import '../../data/models.dart';
 import '../../data/store.dart';
 import '../../widgets/common.dart';
 
-enum _RoomFilter { all, vacant, full }
+const _red = Color(0xFFDC2626);
+
+enum _Availability { all, vacant, vacatingSoon, full, billDue }
+
+enum _AcFilter { any, ac, nonAc }
 
 class RoomsScreen extends ConsumerStatefulWidget {
   const RoomsScreen({super.key});
@@ -19,29 +24,59 @@ class RoomsScreen extends ConsumerStatefulWidget {
 
 class _RoomsScreenState extends ConsumerState<RoomsScreen> {
   String _query = '';
-  _RoomFilter _filter = _RoomFilter.all;
+  _Availability _availability = _Availability.all;
+  _AcFilter _ac = _AcFilter.any;
+
+  /// Beds per room (sharing); null = any.
+  int? _sharing;
 
   @override
   Widget build(BuildContext context) {
     final rooms = [...ref.watch(roomsProvider)]
       ..sort((a, b) => a.number.compareTo(b.number));
-    final occupancy = occupancyByRoom(ref.watch(tenantsProvider));
+    final tenants = ref.watch(tenantsProvider);
+    final occupancy = occupancyByRoom(tenants);
+    final leaving = upcomingVacancies(tenants);
+    final billDue = electricityDueByRoom(ref.watch(electricityDuesProvider));
+    final sharingOptions = rooms.map((r) => r.beds).toSet().toList()..sort();
+
+    List<Tenant> leavingIn(Room r) =>
+        leaving.where((t) => t.roomId == r.id).toList();
 
     final shown = rooms.where((r) {
       final filled = occupancy[r.id] ?? 0;
-      final matches = _query.isEmpty ||
-          r.number.toLowerCase().contains(_query.toLowerCase()) ||
-          r.floor.toLowerCase().contains(_query.toLowerCase());
-      return matches &&
-          switch (_filter) {
-            _RoomFilter.all => true,
-            _RoomFilter.vacant => filled < r.beds,
-            _RoomFilter.full => filled >= r.beds,
-          };
+      final q = _query.toLowerCase();
+      if (q.isNotEmpty &&
+          !r.number.toLowerCase().contains(q) &&
+          !r.floor.toLowerCase().contains(q)) {
+        return false;
+      }
+      if (_ac == _AcFilter.ac && !r.isAC) return false;
+      if (_ac == _AcFilter.nonAc && r.isAC) return false;
+      if (_sharing != null && r.beds != _sharing) return false;
+      return switch (_availability) {
+        _Availability.all => true,
+        _Availability.vacant => filled < r.beds,
+        _Availability.vacatingSoon => leavingIn(r).isNotEmpty,
+        _Availability.full => filled >= r.beds,
+        _Availability.billDue => (billDue[r.id] ?? 0) > 0,
+      };
     }).toList();
 
     final totalBeds = rooms.fold<int>(0, (s, r) => s + r.beds);
     final filledBeds = occupancy.values.fold<int>(0, (s, n) => s + n);
+    final filtered = _ac != _AcFilter.any ||
+        _sharing != null ||
+        _availability != _Availability.all ||
+        _query.isNotEmpty;
+
+    Widget chipRow(List<Widget> chips) => SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            for (final c in chips)
+              Padding(padding: const EdgeInsets.only(right: 8), child: c),
+          ]),
+        );
 
     return Scaffold(
       appBar: AppBar(title: const Text('Rooms')),
@@ -70,7 +105,8 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        '${rooms.length} rooms · $filledBeds of $totalBeds beds filled',
+                        '${rooms.length} rooms · $filledBeds of $totalBeds beds filled'
+                        '${leaving.isEmpty ? '' : ' · ${leaving.length} leaving soon'}',
                         style: TextStyle(
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant),
@@ -80,33 +116,79 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
                           hint: 'Search room number or floor',
                           onChanged: (v) => setState(() => _query = v)),
                       const SizedBox(height: 12),
-                      Wrap(spacing: 8, children: [
-                        for (final f in _RoomFilter.values)
+                      chipRow([
+                        for (final f in _Availability.values)
+                          ChoiceChip(
+                            avatar: f == _Availability.billDue
+                                ? const Icon(Icons.bolt_rounded, size: 18)
+                                : null,
+                            label: Text(switch (f) {
+                              _Availability.all => 'All',
+                              _Availability.vacant => 'Has vacancy',
+                              _Availability.vacatingSoon => 'Vacating soon',
+                              _Availability.full => 'Full',
+                              _Availability.billDue => 'Bill pending',
+                            }),
+                            selected: _availability == f,
+                            onSelected: (_) =>
+                                setState(() => _availability = f),
+                          ),
+                      ]),
+                      const SizedBox(height: 8),
+                      chipRow([
+                        for (final f in _AcFilter.values)
                           ChoiceChip(
                             label: Text(switch (f) {
-                              _RoomFilter.all => 'All',
-                              _RoomFilter.vacant => 'Has vacancy',
-                              _RoomFilter.full => 'Full',
+                              _AcFilter.any => 'AC & Non-AC',
+                              _AcFilter.ac => 'AC',
+                              _AcFilter.nonAc => 'Non-AC',
                             }),
-                            selected: _filter == f,
-                            onSelected: (_) => setState(() => _filter = f),
+                            selected: _ac == f,
+                            onSelected: (_) => setState(() => _ac = f),
+                          ),
+                        const SizedBox(
+                            height: 24, child: VerticalDivider(width: 8)),
+                        for (final n in sharingOptions)
+                          FilterChip(
+                            label: Text(n == 1 ? 'Single' : '$n-sharing'),
+                            selected: _sharing == n,
+                            onSelected: (on) =>
+                                setState(() => _sharing = on ? n : null),
                           ),
                       ]),
                       const SizedBox(height: 12),
+                      if (filtered)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(children: [
+                            Expanded(
+                              child: Text(
+                                  'Showing ${shown.length} of ${rooms.length} rooms',
+                                  style:
+                                      Theme.of(context).textTheme.bodySmall),
+                            ),
+                            TextButton(
+                              onPressed: () => setState(() {
+                                _availability = _Availability.all;
+                                _ac = _AcFilter.any;
+                                _sharing = null;
+                              }),
+                              child: const Text('Clear filters'),
+                            ),
+                          ]),
+                        ),
                       if (shown.isEmpty)
                         const Padding(
                           padding: EdgeInsets.all(32),
-                          child: Text('No rooms match your search.',
+                          child: Text('No rooms match these filters.',
                               textAlign: TextAlign.center),
                         ),
                       for (final room in shown) ...[
                         _RoomCard(
-                          number: room.number,
-                          floor: room.floor,
-                          isAC: room.isAC,
-                          rent: room.rent,
-                          beds: room.beds,
+                          room: room,
                           filled: occupancy[room.id] ?? 0,
+                          leaving: leavingIn(room),
+                          billDue: billDue[room.id] ?? 0,
                           onTap: () => context.push('/rooms/${room.id}'),
                         ),
                         const SizedBox(height: 10),
@@ -122,29 +204,36 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
 
 class _RoomCard extends StatelessWidget {
   const _RoomCard({
-    required this.number,
-    required this.floor,
-    required this.isAC,
-    required this.rent,
-    required this.beds,
+    required this.room,
     required this.filled,
+    required this.leaving,
+    required this.billDue,
     required this.onTap,
   });
 
-  final String number;
-  final String floor;
-  final bool isAC;
-  final double rent;
-  final int beds;
+  final Room room;
   final int filled;
+
+  /// Staying tenants with a relieving date, soonest first.
+  final List<Tenant> leaving;
+
+  /// Unpaid electricity for this room.
+  final double billDue;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final beds = room.beds;
     final isFull = filled >= beds;
     final color = isFull ? AppColors.warning : AppColors.success;
+    final today = dateOnly(DateTime.now());
     return Card(
+      shape: billDue > 0
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: _red.withValues(alpha: 0.5)))
+          : null,
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -160,14 +249,14 @@ class _RoomCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Room $number',
+                      Text('Room ${room.number}',
                           style: theme.textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       Text(
                         [
-                          if (floor.isNotEmpty) 'Floor $floor',
-                          '$beds-sharing',
-                          if (isAC) 'AC',
+                          if (room.floor.isNotEmpty) 'Floor ${room.floor}',
+                          beds == 1 ? 'Single' : '$beds-sharing',
+                          room.isAC ? 'AC' : 'Non-AC',
                         ].join(' · '),
                         style: TextStyle(
                             color: theme.colorScheme.onSurfaceVariant),
@@ -175,11 +264,22 @@ class _RoomCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                StatusChip(
-                    isFull ? 'Full' : '${beds - filled} vacant',
-                    color: color),
               ]),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                StatusChip(isFull ? 'Full' : '${beds - filled} vacant',
+                    color: color),
+                for (final t in leaving)
+                  StatusChip(
+                    moveOutPending(t, today)
+                        ? 'Move-out pending'
+                        : '1 vacant from ${fmtDate(t.vacantFrom!)}',
+                    color: moveOutPending(t, today) ? _red : AppColors.purple,
+                  ),
+                if (billDue > 0)
+                  StatusChip('⚡ Bill ${money(billDue)} pending', color: _red),
+              ]),
+              const SizedBox(height: 12),
               ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: LinearProgressIndicator(
@@ -195,7 +295,7 @@ class _RoomCard extends StatelessWidget {
                   child: Text('$filled of $beds beds filled',
                       style: theme.textTheme.bodySmall),
                 ),
-                Text('${money(rent)} / bed',
+                Text('${money(room.rent)} / bed',
                     style: theme.textTheme.bodySmall
                         ?.copyWith(fontWeight: FontWeight.w600)),
               ]),

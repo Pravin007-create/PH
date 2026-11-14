@@ -33,6 +33,8 @@ class HomeScreen extends ConsumerWidget {
     // Overdue (any month, oldest first), then this rent month's due/upcoming.
     final pending = [...overdue, ...unpaid.where((d) => !d.isOverdue)];
     final power = ref.watch(electricityDuesProvider);
+    final leaving = upcomingVacancies(tenants);
+    final today = dateOnly(DateTime.now());
 
     return Scaffold(
       body: SafeArea(
@@ -156,6 +158,33 @@ class HomeScreen extends ConsumerWidget {
                         ],
                       ]),
                     ),
+
+                  if (leaving.isNotEmpty) ...[
+                    SectionHeader('Upcoming vacancies (${leaving.length})'),
+                    Card(
+                      child: Column(children: [
+                        for (final t in leaving.take(6)) ...[
+                          if (t != leaving.first) const Divider(height: 1),
+                          ListTile(
+                            onTap: () => context.push('/tenants/${t.id}'),
+                            leading: IconBadge(
+                                icon: moveOutPending(t, today)
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.event_busy_rounded,
+                                color: moveOutPending(t, today)
+                                    ? const Color(0xFFDC2626)
+                                    : AppColors.purple),
+                            title: Text(
+                                'Room ${rooms.where((r) => r.id == t.roomId).firstOrNull?.number ?? '-'} · ${t.name}'),
+                            subtitle: Text(moveOutPending(t, today)
+                                ? 'Left ${fmtDate(t.relievingDate!)} · complete move-out'
+                                : '1 bed free from ${fmtDate(t.vacantFrom!)}'),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                          ),
+                        ],
+                      ]),
+                    ),
+                  ],
 
                   if (power.isNotEmpty) ...[
                     SectionHeader(

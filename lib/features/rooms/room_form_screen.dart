@@ -526,14 +526,20 @@ class _RoomView extends ConsumerWidget {
               ListTile(
                 leading: CircleAvatar(child: Text(initials(t.name))),
                 title: Text(t.name),
-                subtitle: Text(t.phone),
+                subtitle: Text(t.relievingDate == null
+                    ? t.phone
+                    : '${t.phone} · leaving ${fmtDate(t.relievingDate!)}'),
                 trailing: const Icon(Icons.chevron_right_rounded),
                 onTap: () => context.push('/tenants/${t.id}'),
               ),
-            if (tenantsHere.length < room.beds)
+            if (tenantsHere.length < room.beds ||
+                tenantsHere.any((t) => t.relievingDate != null))
               ListTile(
                 leading: const Icon(Icons.person_add_alt_1_rounded),
                 title: const Text('Add tenant to this room'),
+                subtitle: tenantsHere.length < room.beds
+                    ? null
+                    : Text('Bed free from ${fmtDate(upcomingVacancies(tenantsHere).first.vacantFrom!)}'),
                 onTap: () => context.push('/tenants/new?room=${room.id}'),
               ),
           ]),
