@@ -169,7 +169,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('All four PDF reports generate', () async {
+  test('All PDF reports generate', () async {
     final month = monthOf(DateTime.now());
     final data = ReportData(
       month: month,
@@ -207,6 +207,19 @@ void main() {
             category: 'Electricity',
             amount: 2500,
             date: DateTime.now()),
+      ],
+      electricityBills: [
+        ElectricityBill(
+            id: 'b1',
+            roomId: 'r1',
+            month: month,
+            amount: 800,
+            units: 100,
+            previousReading: 1250,
+            currentReading: 1350,
+            unitRate: 8,
+            tenantIds: const ['t1', 't2'],
+            createdAt: DateTime.now()),
       ],
     );
     expect(data.summary.rentCollected, 6000);

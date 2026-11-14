@@ -242,7 +242,7 @@ void main() {
         find.widgetWithText(TextFormField, 'Bill amount *'), '1200');
     await tester.pumpAndSettle();
     expect(find.textContaining('= ${money(600)} per person'), findsOneWidget);
-    await w.tapOn(tester, find.text('Save Bill'));
+    await w.tapOn(tester, find.textContaining('Save Bill'));
 
     expect(find.text('${money(600)} pending'), findsNWidgets(2));
     expect(container(tester).read(electricityDuesProvider).length, 2);
@@ -576,5 +576,73 @@ void main() {
       expect(find.text('Aadhaar card'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  testWidgets(
+      'Meter bill: (now − units run) × rate, split, room reading updated',
+      (tester) async {
+    final join = DateTime(2026, 1, 1).toIso8601String();
+    SharedPreferences.setMockInitialValues({
+      'profile': jsonEncode({'pgName': 'Test PG', 'unitRate': 8}),
+      'rooms': jsonEncode([
+        {'id': 'r1', 'number': '101', 'beds': 2, 'rent': 6000,
+          'separateElectricity': true, 'meterReading': 1250}
+      ]),
+      'tenants': jsonEncode([
+        for (final n in ['Asha', 'Bala'])
+          {'id': n, 'name': n, 'phone': '9876543210', 'roomId': 'r1',
+            'rent': 6000, 'joinDate': join, 'createdAt': join}
+      ]),
+    });
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('Rooms'));
+    await w.tapOn(tester, find.text('Room 101'));
+    expect(find.text('1250 units'), findsOneWidget); // units run till now
+    await w.tapOn(tester, find.text('Add Electricity Bill +'));
+
+    // Last reading and rate are pre-filled.
+    expect(find.widgetWithText(TextFormField, '1250'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, '8'), findsOneWidget);
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Now unit *'), '1350');
+    await tester.pumpAndSettle();
+    // 100 units × ₹8 = ₹800 → ₹400 each.
+    expect(find.text(money(800)), findsWidgets);
+    expect(find.textContaining('= ${money(400)} per person'), findsOneWidget);
+    await w.tapOn(tester, find.text('Save Bill · ${money(800)}'));
+
+    final c = container(tester);
+    final bill = c.read(electricityBillsProvider).single;
+    expect(bill.units, 100);
+    expect(bill.previousReading, 1250);
+    expect(bill.currentReading, 1350);
+    expect(bill.amount, 800);
+    expect(c.read(roomsProvider).single.meterReading, 1350);
+    expect(find.text('1350 units'), findsOneWidget);
+    expect(find.textContaining('Meter 1250 → 1350 = 100 units'), findsOneWidget);
+
+    // Deleting the latest bill puts the meter back.
+    await w.tapOn(tester, find.byTooltip('Delete bill'));
+    await w.tapOn(tester, find.text('Delete'));
+    expect(c.read(roomsProvider).single.meterReading, 1250);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('New reading lower than last is rejected', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'profile': jsonEncode({'pgName': 'Test PG', 'unitRate': 8}),
+      'rooms': jsonEncode([
+        {'id': 'r1', 'number': '101', 'beds': 2, 'rent': 6000,
+          'separateElectricity': true, 'meterReading': 1250}
+      ]),
+    });
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('Rooms'));
+    await w.tapOn(tester, find.text('Room 101'));
+    await w.tapOn(tester, find.text('Add Electricity Bill +'));
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Now unit *'), '1200');
+    await w.tapOn(tester, find.text('Save Bill'));
+    expect(find.text('Less than last'), findsOneWidget);
   });
 }

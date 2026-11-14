@@ -12,6 +12,10 @@ class Room {
 
   /// Electricity is billed separately and split between the room's tenants.
   final bool separateElectricity;
+
+  /// Last electricity meter reading ("units run till now"). Updated to the
+  /// new reading each time a bill is created.
+  final double meterReading;
   final String notes;
 
   const Room({
@@ -22,13 +26,27 @@ class Room {
     required this.rent,
     this.isAC = false,
     this.separateElectricity = false,
+    this.meterReading = 0,
     this.notes = '',
   });
+
+  Room copyWith({double? meterReading}) => Room(
+        id: id,
+        number: number,
+        floor: floor,
+        beds: beds,
+        rent: rent,
+        isAC: isAC,
+        separateElectricity: separateElectricity,
+        meterReading: meterReading ?? this.meterReading,
+        notes: notes,
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'number': number,
         'separateElectricity': separateElectricity,
+        'meterReading': meterReading,
         'floor': floor,
         'beds': beds,
         'rent': rent,
@@ -44,6 +62,7 @@ class Room {
         rent: (j['rent'] as num).toDouble(),
         isAC: (j['isAC'] ?? false) as bool,
         separateElectricity: (j['separateElectricity'] ?? false) as bool,
+        meterReading: ((j['meterReading'] ?? 0) as num).toDouble(),
         notes: (j['notes'] ?? '') as String,
       );
 }
@@ -428,6 +447,9 @@ class ElectricityBill {
     required this.amount,
     required this.tenantIds,
     this.units = 0,
+    this.previousReading,
+    this.currentReading,
+    this.unitRate,
     required this.createdAt,
   });
 
@@ -438,8 +460,15 @@ class ElectricityBill {
   final DateTime month;
   final double amount;
 
-  /// Units consumed (optional, for reference).
+  /// Units consumed (current − previous reading when using the meter).
   final double units;
+
+  /// Meter readings and rate used (null when the amount was typed in).
+  final double? previousReading;
+  final double? currentReading;
+  final double? unitRate;
+
+  bool get fromMeter => currentReading != null;
   final List<String> tenantIds;
   final DateTime createdAt;
 
@@ -452,6 +481,9 @@ class ElectricityBill {
         'month': month.toIso8601String(),
         'amount': amount,
         'units': units,
+        'previousReading': previousReading,
+        'currentReading': currentReading,
+        'unitRate': unitRate,
         'tenantIds': tenantIds,
         'createdAt': createdAt.toIso8601String(),
       };
@@ -462,6 +494,9 @@ class ElectricityBill {
         month: DateTime.parse(j['month'] as String),
         amount: (j['amount'] as num).toDouble(),
         units: ((j['units'] ?? 0) as num).toDouble(),
+        previousReading: (j['previousReading'] as num?)?.toDouble(),
+        currentReading: (j['currentReading'] as num?)?.toDouble(),
+        unitRate: (j['unitRate'] as num?)?.toDouble(),
         tenantIds: List<String>.from((j['tenantIds'] ?? const []) as List),
         createdAt: DateTime.parse(j['createdAt'] as String),
       );
@@ -537,6 +572,9 @@ class PgProfile {
   /// End of month + 5 → due by the 5th of the next month.
   final int dueDays;
 
+  /// Electricity charge per unit (₹). 0 = not set.
+  final double unitRate;
+
   const PgProfile({
     this.pgName = '',
     this.ownerName = '',
@@ -544,6 +582,7 @@ class PgProfile {
     this.address = '',
     this.rentCycle = RentCycle.monthStart,
     this.dueDays = 5,
+    this.unitRate = 0,
   });
 
   bool get isEmpty => pgName.isEmpty && ownerName.isEmpty;
@@ -555,6 +594,7 @@ class PgProfile {
         'address': address,
         'rentCycle': rentCycle.name,
         'dueDays': dueDays,
+        'unitRate': unitRate,
       };
 
   factory PgProfile.fromJson(Map<String, dynamic> j) => PgProfile(
@@ -565,5 +605,6 @@ class PgProfile {
         rentCycle: RentCycle.values.firstWhere((c) => c.name == j['rentCycle'],
             orElse: () => RentCycle.monthStart),
         dueDays: ((j['dueDays'] ?? 5) as num).toInt().clamp(1, 28),
+        unitRate: ((j['unitRate'] ?? 0) as num).toDouble(),
       );
 }

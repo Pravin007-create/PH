@@ -26,6 +26,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         tenants: ref.read(tenantsProvider),
         payments: ref.read(paymentsProvider),
         expenses: ref.read(expensesProvider),
+        electricityBills: ref.read(electricityBillsProvider),
       );
 
   /// Opens the phone's share sheet: Save to Files / Drive, WhatsApp, email...
@@ -58,6 +59,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     ReportType.rent: (Icons.fact_check_rounded, AppColors.success),
     ReportType.expenses: (Icons.receipt_long_rounded, AppColors.pink),
     ReportType.tenants: (Icons.people_alt_rounded, AppColors.purple),
+    ReportType.electricity: (Icons.bolt_rounded, AppColors.warning),
   };
 
   @override

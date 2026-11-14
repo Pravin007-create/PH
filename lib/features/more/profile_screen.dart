@@ -22,12 +22,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   late final _owner = TextEditingController(text: _p.ownerName);
   late final _phone = TextEditingController(text: _p.phone);
   late final _address = TextEditingController(text: _p.address);
+  late final _unitRate =
+      TextEditingController(text: _p.unitRate == 0 ? '' : _trim(_p.unitRate));
   late RentCycle _cycle = _p.rentCycle;
   late int _dueDays = _p.dueDays;
 
   @override
   void dispose() {
-    for (final c in [_pgName, _owner, _phone, _address]) {
+    for (final c in [_pgName, _owner, _phone, _address, _unitRate]) {
       c.dispose();
     }
     super.dispose();
@@ -42,6 +44,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           address: _address.text.trim(),
           rentCycle: _cycle,
           dueDays: _dueDays,
+          unitRate: double.tryParse(_unitRate.text.trim()) ?? 0,
         ));
     showSaved(context, 'PG details saved');
     context.pop();
@@ -107,6 +110,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                   ),
                   ..._rentRules(context),
+                  const FormLabel('Electricity'),
+                  TextFormField(
+                    controller: _unitRate,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: decimalOnly,
+                    decoration: const InputDecoration(
+                      labelText: 'Unit rate (per unit)',
+                      prefixText: '₹ ',
+                      suffixText: '/ unit',
+                      prefixIcon: Icon(Icons.bolt_rounded),
+                      helperText: 'Used for rooms with separate electricity: '
+                          '(new reading − last reading) × unit rate',
+                      helperMaxLines: 2,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -149,8 +168,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Row(children: [
             IconButton.filledTonal(
               tooltip: 'Fewer days',
-              onPressed:
-                  _dueDays > 1 ? () => setState(() => _dueDays--) : null,
+              onPressed: _dueDays > 1 ? () => setState(() => _dueDays--) : null,
               icon: const Icon(Icons.remove_rounded),
             ),
             Expanded(
@@ -208,3 +226,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     ];
   }
 }
+
+/// 8.0 → "8", 8.5 → "8.5"
+String _trim(double v) =>
+    v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();

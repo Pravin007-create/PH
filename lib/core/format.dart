@@ -28,3 +28,8 @@ String initials(String name) {
   if (parts.isEmpty) return '?';
   return parts.take(2).map((p) => p[0].toUpperCase()).join();
 }
+
+/// Meter units without useless decimals: 1250.0 → "1250", 12.5 → "12.5".
+String fmtUnits(double v) => v == v.roundToDouble()
+    ? v.toStringAsFixed(0)
+    : v.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '');

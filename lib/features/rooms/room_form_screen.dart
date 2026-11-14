@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -43,6 +45,7 @@ class _RoomFormScreenState extends ConsumerState<RoomFormScreen> {
   final _floor = TextEditingController();
   final _rent = TextEditingController();
   final _notes = TextEditingController();
+  final _meter = TextEditingController();
   int _beds = 2;
   bool _isAC = false;
   bool _separateElectricity = false;
@@ -73,11 +76,20 @@ class _RoomFormScreenState extends ConsumerState<RoomFormScreen> {
     _beds = r?.beds ?? 2;
     _isAC = r?.isAC ?? false;
     _separateElectricity = r?.separateElectricity ?? false;
+    _meter.text =
+        r == null || r.meterReading == 0 ? '' : fmtUnits(r.meterReading);
   }
 
   @override
   void dispose() {
-    for (final c in [_number, _floor, _rent, _notes, ..._manualNumbers]) {
+    for (final c in [
+      _number,
+      _floor,
+      _rent,
+      _notes,
+      _meter,
+      ..._manualNumbers
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -156,6 +168,7 @@ class _RoomFormScreenState extends ConsumerState<RoomFormScreen> {
         rent: double.parse(_rent.text.trim()),
         isAC: _isAC,
         separateElectricity: _separateElectricity,
+        meterReading: double.tryParse(_meter.text.trim()) ?? 0,
         notes: _notes.text.trim(),
       ));
     }
@@ -376,6 +389,26 @@ class _RoomFormScreenState extends ConsumerState<RoomFormScreen> {
                 subtitle: const Text(
                     'Room bill is split equally between the tenants staying in it'),
               ),
+              if (_separateElectricity)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  child: TextFormField(
+                    controller: _meter,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: decimalOnly,
+                    decoration: InputDecoration(
+                      labelText: 'Units run till now (meter reading)',
+                      suffixText: 'units',
+                      prefixIcon: const Icon(Icons.speed_rounded),
+                      helperText: _isNew && _count > 1
+                          ? 'Same for all new rooms — change each room later'
+                          : 'Current reading on the room\'s meter. Updated '
+                              'automatically when you add a bill.',
+                      helperMaxLines: 2,
+                    ),
+                  ),
+                ),
             ]),
           ),
           const SizedBox(height: 14),
@@ -510,6 +543,9 @@ class _RoomView extends ConsumerWidget {
             info(Icons.ac_unit_rounded, 'AC', room.isAC ? 'Yes' : 'No'),
             info(Icons.bolt_rounded, 'Electricity',
                 room.separateElectricity ? 'Separate (split)' : 'Included'),
+            if (room.separateElectricity)
+              info(Icons.speed_rounded, 'Units run till now',
+                  '${fmtUnits(room.meterReading)} units'),
             if (room.notes.isNotEmpty)
               ListTile(
                 dense: true,
@@ -539,7 +575,8 @@ class _RoomView extends ConsumerWidget {
                 title: const Text('Add tenant to this room'),
                 subtitle: tenantsHere.length < room.beds
                     ? null
-                    : Text('Bed free from ${fmtDate(upcomingVacancies(tenantsHere).first.vacantFrom!)}'),
+                    : Text(
+                        'Bed free from ${fmtDate(upcomingVacancies(tenantsHere).first.vacantFrom!)}'),
                 onTap: () => context.push('/tenants/new?room=${room.id}'),
               ),
           ]),
@@ -611,9 +648,15 @@ class _BillCard extends ConsumerWidget {
                 icon: Icons.bolt_rounded, color: AppColors.warning),
             title: Text('${fmtMonth(bill.month)} · ${money(bill.amount)}',
                 style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text(
-                '${bill.units > 0 ? '${bill.units.toStringAsFixed(0)} units · ' : ''}'
-                '${bill.tenantIds.length} people · ${money(bill.share)} each'),
+            subtitle: Text([
+              if (bill.fromMeter)
+                'Meter ${fmtUnits(bill.previousReading ?? 0)} → ${fmtUnits(bill.currentReading!)} = '
+                    '${fmtUnits(bill.units)} units × ${money(bill.unitRate ?? 0)}'
+              else if (bill.units > 0)
+                '${fmtUnits(bill.units)} units',
+              '${bill.tenantIds.length} people · ${money(bill.share)} each',
+            ].join('\n')),
+            isThreeLine: bill.fromMeter,
             trailing: IconButton(
               tooltip: 'Delete bill',
               icon: const Icon(Icons.delete_outline_rounded),
@@ -623,6 +666,15 @@ class _BillCard extends ConsumerWidget {
                     message: 'Electricity payments already recorded are kept.');
                 if (ok) {
                   ref.read(electricityBillsProvider.notifier).remove(bill.id);
+                  // Undo the meter update if this was the latest bill.
+                  final rooms = ref.read(roomsProvider.notifier);
+                  final room = rooms.byId(bill.roomId);
+                  if (room != null &&
+                      bill.fromMeter &&
+                      room.meterReading == bill.currentReading) {
+                    rooms.save(
+                        room.copyWith(meterReading: bill.previousReading ?? 0));
+                  }
                 }
               },
             ),
@@ -660,6 +712,8 @@ class _BillCard extends ConsumerWidget {
 }
 
 /// Bottom sheet: enter a month's bill for a room and split it.
+/// Meter mode: (new reading − last reading) × unit rate = amount; the new
+/// reading is then saved on the room as "units run till now".
 class ElectricityBillSheet extends ConsumerStatefulWidget {
   const ElectricityBillSheet({super.key, required this.room});
   final Room room;
@@ -671,6 +725,15 @@ class ElectricityBillSheet extends ConsumerStatefulWidget {
 
 class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
   final _formKey = GlobalKey<FormState>();
+  late final double _rate = ref.read(profileProvider).unitRate;
+  late bool _useMeter = _rate > 0;
+  late final _last = TextEditingController(
+      text: widget.room.meterReading == 0
+          ? ''
+          : fmtUnits(widget.room.meterReading));
+  final _now = TextEditingController();
+  late final _unitRate =
+      TextEditingController(text: _rate == 0 ? '' : fmtUnits(_rate));
   final _amount = TextEditingController();
   final _units = TextEditingController();
   // The bill usually arrives after the month ends → default last month.
@@ -684,10 +747,15 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
 
   @override
   void dispose() {
-    _amount.dispose();
-    _units.dispose();
+    for (final c in [_last, _now, _unitRate, _amount, _units]) {
+      c.dispose();
+    }
     super.dispose();
   }
+
+  double _n(TextEditingController c) => double.tryParse(c.text.trim()) ?? 0;
+  double get _meterUnits => max(0, _n(_now) - _n(_last));
+  double get _total => _useMeter ? _meterUnits * _n(_unitRate) : _n(_amount);
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;
@@ -696,18 +764,42 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
           const SnackBar(content: Text('Choose who shares this bill.')));
       return;
     }
+    if (_total <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Bill amount is ₹0. Check the readings.')));
+      return;
+    }
     ref.read(electricityBillsProvider.notifier).save(ElectricityBill(
           id: newId(),
           roomId: widget.room.id,
           month: _month,
-          amount: double.parse(_amount.text.trim()),
-          units: double.tryParse(_units.text.trim()) ?? 0,
+          amount: double.parse(_total.toStringAsFixed(2)),
+          units: _useMeter ? _meterUnits : _n(_units),
+          previousReading: _useMeter ? _n(_last) : null,
+          currentReading: _useMeter ? _n(_now) : null,
+          unitRate: _useMeter ? _n(_unitRate) : null,
           tenantIds: _selected.toList(),
           createdAt: DateTime.now(),
         ));
+    if (_useMeter) {
+      // New reading becomes the room's "units run till now".
+      final rooms = ref.read(roomsProvider.notifier);
+      final room = rooms.byId(widget.room.id);
+      if (room != null) rooms.save(room.copyWith(meterReading: _n(_now)));
+    }
     Navigator.pop(context);
-    showSaved(context, 'Electricity bill added for ${fmtMonth(_month)}');
+    showSaved(context,
+        'Electricity bill ${money(_total)} added for ${fmtMonth(_month)}');
   }
+
+  InputDecoration _dec(String label,
+          {String? suffix, String? prefix, String? helper}) =>
+      InputDecoration(
+          labelText: label,
+          suffixText: suffix,
+          prefixText: prefix,
+          helperText: helper,
+          helperMaxLines: 2);
 
   @override
   Widget build(BuildContext context) {
@@ -719,11 +811,12 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
       for (final t in allTenants.where((t) => _selected.contains(t.id)))
         t.id: t,
     }.values.toList();
-    final amount = double.tryParse(_amount.text.trim()) ?? 0;
-    final share = _selected.isEmpty ? 0.0 : amount / _selected.length;
+    final total = _total;
+    final share = _selected.isEmpty ? 0.0 : total / _selected.length;
     final months = [
       for (var i = 0; i >= -12; i--) addMonths(monthOf(DateTime.now()), i)
     ];
+    void refresh(String _) => setState(() {});
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -757,39 +850,110 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
                   }),
                 ),
                 const SizedBox(height: 14),
-                Row(children: [
-                  Expanded(
-                    flex: 3,
-                    child: TextFormField(
-                      controller: _amount,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: decimalOnly,
-                      onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
-                        labelText: 'Bill amount *',
-                        prefixText: '₹ ',
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(
+                        value: true,
+                        icon: Icon(Icons.speed_rounded, size: 18),
+                        label: Text('Meter reading')),
+                    ButtonSegment(
+                        value: false,
+                        icon: Icon(Icons.currency_rupee_rounded, size: 18),
+                        label: Text('Enter amount')),
+                  ],
+                  selected: {_useMeter},
+                  onSelectionChanged: (v) =>
+                      setState(() => _useMeter = v.first),
+                ),
+                const SizedBox(height: 14),
+                if (_useMeter) ...[
+                  Row(children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _last,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: decimalOnly,
+                        onChanged: refresh,
+                        decoration: _dec('Units run till now', suffix: 'units'),
                       ),
-                      validator: (v) {
-                        final err = amountField(v, 'amount');
-                        if (err != null) return err;
-                        return double.parse(v!.trim()) <= 0
-                            ? 'More than 0'
-                            : null;
-                      },
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 2,
-                    child: TextFormField(
-                      controller: _units,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: decimalOnly,
-                      decoration:
-                          const InputDecoration(labelText: 'Units (optional)'),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _now,
+                        autofocus: true,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        inputFormatters: decimalOnly,
+                        onChanged: refresh,
+                        decoration: _dec('Now unit *', suffix: 'units'),
+                        validator: (v) {
+                          final now = double.tryParse(v?.trim() ?? '');
+                          if (now == null) return 'Enter reading';
+                          if (now < _n(_last)) return 'Less than last';
+                          return null;
+                        },
+                      ),
                     ),
+                  ]),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _unitRate,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: decimalOnly,
+                    onChanged: refresh,
+                    decoration: _dec('Unit rate *',
+                        prefix: '₹ ',
+                        suffix: '/ unit',
+                        helper: _rate == 0
+                            ? 'Tip: save the unit rate in PG details to fill this automatically'
+                            : 'From PG details · change for this bill if needed'),
+                    validator: (v) =>
+                        (double.tryParse(v?.trim() ?? '') ?? 0) <= 0
+                            ? 'Enter unit rate'
+                            : null,
                   ),
-                ]),
+                  const SizedBox(height: 12),
+                  _CalcCard(lines: [
+                    ('Now unit', fmtUnits(_n(_now))),
+                    ('− Units run till now', fmtUnits(_n(_last))),
+                    ('= Units used', fmtUnits(_meterUnits)),
+                    ('× Unit rate', money(_n(_unitRate))),
+                  ], total: total),
+                ] else ...[
+                  Row(children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _amount,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: decimalOnly,
+                        onChanged: refresh,
+                        decoration: _dec('Bill amount *', prefix: '₹ '),
+                        validator: (v) {
+                          final err = amountField(v, 'amount');
+                          if (err != null) return err;
+                          return double.parse(v!.trim()) <= 0
+                              ? 'More than 0'
+                              : null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: _units,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: decimalOnly,
+                        decoration: _dec('Units (optional)'),
+                      ),
+                    ),
+                  ]),
+                ],
                 const FormLabel('Split between'),
                 if (candidates.isEmpty)
                   Text('No tenants stayed in this room in ${fmtMonth(_month)}.',
@@ -824,7 +988,7 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
                     Expanded(
                       child: Text(_selected.isEmpty
                           ? 'Choose who shares the bill'
-                          : '${money(amount)} ÷ ${_selected.length} = '
+                          : '${money(total)} ÷ ${_selected.length} = '
                               '${money(share)} per person'),
                     ),
                   ]),
@@ -833,13 +997,54 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
                 FilledButton.icon(
                   onPressed: _save,
                   icon: const Icon(Icons.check_rounded),
-                  label: const Text('Save Bill'),
+                  label: Text(
+                      total > 0 ? 'Save Bill · ${money(total)}' : 'Save Bill'),
                 ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "Now unit 1350 / − last 1250 / = 100 units / × ₹8 / Amount ₹800".
+class _CalcCard extends StatelessWidget {
+  const _CalcCard({required this.lines, required this.total});
+  final List<(String, String)> lines;
+  final double total;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(children: [
+        for (final (label, value) in lines)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Row(children: [
+              Expanded(child: Text(label)),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        const Divider(height: 16),
+        Row(children: [
+          const Expanded(
+              child: Text('Bill amount',
+                  style: TextStyle(fontWeight: FontWeight.w700))),
+          Text(money(total),
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: scheme.primary)),
+        ]),
+      ]),
     );
   }
 }

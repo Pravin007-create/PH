@@ -16,6 +16,7 @@ class ReportData {
     required this.tenants,
     required this.payments,
     required this.expenses,
+    this.electricityBills = const [],
   }) : summary = summarize(month, rooms, tenants, payments, expenses,
             rules: RentRules.of(profile));
 
@@ -25,6 +26,7 @@ class ReportData {
   final List<Tenant> tenants;
   final List<Payment> payments;
   final List<Expense> expenses;
+  final List<ElectricityBill> electricityBills;
   final MonthSummary summary;
 
   String roomOf(Tenant t) {
@@ -48,7 +50,9 @@ enum ReportType {
   rent('Rent Collection & Dues',
       'Every tenant: rent, amount paid and balance due for the month'),
   expenses('Expense Report', 'All expenses for the month with category totals'),
-  tenants('Tenant List', 'All current tenants with room, phone, rent and deposit');
+  tenants('Tenant List', 'All current tenants with room, phone, rent and deposit'),
+  electricity('Electricity Bill Report',
+      'Room-wise meter readings, units, rate, bill amount and each person\'s share');
 
   const ReportType(this.title, this.description);
   final String title;
@@ -75,6 +79,7 @@ Future<Uint8List> buildReport(ReportType type, ReportData d) async {
     ReportType.rent => _rent(d),
     ReportType.expenses => _expenses(d),
     ReportType.tenants => _tenants(d),
+    ReportType.electricity => _electricity(d),
   };
 
   doc.addPage(pw.MultiPage(
@@ -494,4 +499,134 @@ Future<Uint8List> buildSettlementPdf(
     ),
   ));
   return doc.save();
+}
+
+List<pw.Widget> _electricity(ReportData d) {
+  final bills = d.electricityBills
+      .where((b) => sameMonth(b.month, d.month))
+      .toList()
+    ..sort((a, b) => _roomNo(d, a.roomId).compareTo(_roomNo(d, b.roomId)));
+  final shares =
+      electricityShares(d.electricityBills, d.tenants, d.payments);
+  final monthShares = shares.where((x) => sameMonth(x.month, d.month)).toList();
+  final older =
+      shares.where((x) => !x.isPaid && x.month.isBefore(d.month)).toList();
+  double sum(Iterable<double> v) => v.fold(0, (a, b) => a + b);
+  final billed = sum(bills.map((b) => b.amount));
+  final collected = sum(monthShares.map((x) => x.paid));
+  final pending = sum(monthShares.map((x) => x.due));
+  final units = sum(bills.map((b) => b.units));
+  final noBill = d.rooms
+      .where((r) =>
+          r.separateElectricity && !bills.any((b) => b.roomId == r.id))
+      .map((r) => r.number)
+      .toList()
+    ..sort();
+  String rate(ElectricityBill b) =>
+      b.unitRate == null ? '-' : moneyPdf(b.unitRate!);
+  String reading(double? v) => v == null ? '-' : fmtUnits(v);
+  const r = pw.Alignment.centerRight;
+
+  return [
+    pw.Row(children: [
+      _kpi('Total bill amount', moneyPdf(billed)),
+      _kpi('Collected', moneyPdf(collected), color: _green),
+      _kpi('Pending', moneyPdf(pending),
+          color: pending > 0 ? PdfColors.red : _green),
+    ]),
+    pw.Row(children: [
+      _kpi('Rooms billed', '${bills.length}'),
+      _kpi('Total units used', fmtUnits(units)),
+      _kpi('Unit rate (PG details)',
+          d.profile.unitRate == 0 ? 'Not set' : '${moneyPdf(d.profile.unitRate)} / unit'),
+    ]),
+    _title('Room-wise bill'),
+    if (bills.isEmpty)
+      _empty('No electricity bills entered for ${fmtMonth(d.month)}.')
+    else
+      _table(
+        ['Room', 'Last unit', 'Now unit', 'Units', 'Rate', 'Amount', 'People',
+          'Each', 'Paid', 'Pending'],
+        [
+          for (final b in bills)
+            () {
+              final bs = monthShares.where((x) => x.bill.id == b.id);
+              return [
+                _roomNo(d, b.roomId),
+                reading(b.previousReading),
+                reading(b.currentReading),
+                fmtUnits(b.units),
+                rate(b),
+                moneyPdf(b.amount),
+                '${b.tenantIds.length}',
+                moneyPdf(b.share),
+                moneyPdf(sum(bs.map((x) => x.paid))),
+                moneyPdf(sum(bs.map((x) => x.due))),
+              ];
+            }(),
+        ],
+        align: {for (var i = 1; i < 10; i++) i: r},
+        totalRow: [
+          'Total', '', '', fmtUnits(units), '', moneyPdf(billed), '', '',
+          moneyPdf(collected), moneyPdf(pending)
+        ],
+      ),
+    pw.Padding(
+      padding: const pw.EdgeInsets.only(top: 4),
+      child: pw.Text(
+          'Units = Now unit - Last unit.  Amount = Units x Rate, split equally '
+          'between the people staying in the room.',
+          style: const pw.TextStyle(fontSize: 8, color: _muted)),
+    ),
+    _title('Person-wise split'),
+    if (monthShares.isEmpty)
+      _empty('No shares for this month.')
+    else
+      _table(
+        ['Tenant', 'Room', 'Phone', 'Share', 'Paid', 'Pending', 'Status'],
+        [
+          for (final x in monthShares)
+            [
+              x.tenant.name,
+              _roomNo(d, x.bill.roomId),
+              x.tenant.phone,
+              moneyPdf(x.share),
+              moneyPdf(x.paid),
+              moneyPdf(x.due),
+              x.isPaid ? 'PAID' : (x.paid > 0 ? 'PARTIAL' : 'PENDING'),
+            ]
+        ],
+        align: {3: r, 4: r, 5: r},
+        totalRow: [
+          'Total', '', '', moneyPdf(billed), moneyPdf(collected),
+          moneyPdf(pending), ''
+        ],
+      ),
+    if (older.isNotEmpty) ...[
+      _title('Pending from earlier months'),
+      _table(
+        ['Tenant', 'Room', 'Month', 'Pending'],
+        [
+          for (final x in older)
+            [x.tenant.name, _roomNo(d, x.bill.roomId), fmtMonth(x.month),
+              moneyPdf(x.due)]
+        ],
+        align: {3: r},
+        totalRow: ['Total', '', '', moneyPdf(sum(older.map((x) => x.due)))],
+      ),
+    ],
+    if (noBill.isNotEmpty) ...[
+      _title('Bill not entered yet'),
+      pw.Text('Rooms with separate electricity and no bill for '
+          '${fmtMonth(d.month)}: ${noBill.join(', ')}',
+          style: const pw.TextStyle(fontSize: 9, color: _orange)),
+    ],
+  ];
+}
+
+String _roomNo(ReportData d, String roomId) {
+  for (final r in d.rooms) {
+    if (r.id == roomId) return r.number;
+  }
+  return '-';
 }
