@@ -36,6 +36,7 @@ dependencies:
   share_plus: ^12.0.2
   path_provider: ^2.1.6
   file_selector: ^1.1.0
+  image_picker: ^1.2.4
 
 
 dev_dependencies:
@@ -59,4 +60,4 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/branding/icon_foreground.png"
   # Foreground image already keeps the house inside the safe zone.
   adaptive_icon_foreground_inset: 0
-  min_sdk_android: 21
+  min_sdk_android: 24

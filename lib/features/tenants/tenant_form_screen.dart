@@ -6,11 +6,13 @@ import 'package:printing/printing.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../data/calculations.dart';
+import '../../data/documents.dart';
 import '../../data/models.dart';
 import '../../data/store.dart';
 import '../../widgets/common.dart';
 import '../../widgets/due_chip.dart';
 import '../reports/report_builder.dart';
+import 'documents_section.dart';
 
 /// Add a tenant ([tenantId] == null), or view one with an Edit button.
 class TenantFormScreen extends ConsumerStatefulWidget {
@@ -66,10 +68,29 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
     return room == null ? '' : room.rent.toStringAsFixed(0);
   }
 
+  /// New tenant: id chosen up front so documents can be stored before Save.
+  late final String _id = _existing?.id ?? newId();
+
+  /// Documents added in the Add Tenant form (saved with the tenant).
+  List<TenantDocument> _docs = [];
+  bool _docsSubmitted = false;
+  bool _saved = false;
+  String? _docsDir;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.read(docsDirProvider.future).then((d) => _docsDir = d).ignore();
+  }
+
   @override
   void dispose() {
     for (final c in [_name, _phone, _rent, _deposit, _notes]) {
       c.dispose();
+    }
+    // Add form closed without saving: remove the photos it stored.
+    if (!_isEdit && !_saved && _docs.isNotEmpty && _docsDir != null) {
+      deleteDocumentFiles(_docsDir!, _docs);
     }
     super.dispose();
   }
@@ -78,7 +99,7 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
     if (!_formKey.currentState!.validate()) return;
     final live = ref.read(tenantsProvider.notifier).byId(_existing?.id);
     final tenant = Tenant(
-      id: _existing?.id ?? newId(),
+      id: _id,
       name: _name.text.trim(),
       phone: _phone.text.trim(),
       roomId: _roomId,
@@ -90,7 +111,10 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
       notes: _notes.text.trim(),
       createdAt: live?.createdAt ?? DateTime.now(),
       settlement: live?.settlement,
+      documents: live?.documents ?? _docs,
+      documentsSubmitted: live?.documentsSubmitted ?? _docsSubmitted,
     );
+    _saved = true;
     ref.read(tenantsProvider.notifier).save(tenant);
     if (_isEdit) {
       showSaved(context, '${tenant.name} updated');
@@ -127,7 +151,11 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
         message:
             'This also hides them from reports. To keep history, use "Mark as moved out" instead.');
     if (!ok || !mounted) return;
+    final docs = ref.read(tenantsProvider.notifier).byId(_existing!.id)?.documents;
     ref.read(tenantsProvider.notifier).remove(_existing!.id);
+    if (docs != null && docs.isNotEmpty && _docsDir != null) {
+      deleteDocumentFiles(_docsDir!, docs);
+    }
     showSaved(context, 'Tenant deleted');
     context.pop();
   }
@@ -207,6 +235,21 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
                         _TenantActions(
                             tenant: live!, onMoveOut: _toggleMoveOut),
                         _TenantInfo(tenant: live),
+                        const FormLabel('Documents'),
+                        DocumentsSection(
+                          tenantId: live.id,
+                          documents: live.documents,
+                          submitted: live.documentsSubmitted,
+                          // Saved straight away on the tenant page.
+                          onChanged: (docs, submitted) => ref
+                              .read(tenantsProvider.notifier)
+                              .save(ref
+                                  .read(tenantsProvider.notifier)
+                                  .byId(live.id)!
+                                  .copyWith(
+                                      documents: docs,
+                                      documentsSubmitted: submitted)),
+                        ),
                         _PaymentHistory(tenantId: live.id),
                       ],
                     ),
@@ -332,10 +375,22 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
                             maxLines: 2,
                             decoration: const InputDecoration(
                               labelText: 'Notes (optional)',
-                              hintText: 'ID proof, emergency contact, etc.',
+                              hintText: 'Emergency contact, etc.',
                               prefixIcon: Icon(Icons.notes_rounded),
                             ),
                           ),
+                          if (!_isEdit) ...[
+                            const FormLabel('Documents (optional)'),
+                            DocumentsSection(
+                              tenantId: _id,
+                              documents: _docs,
+                              submitted: _docsSubmitted,
+                              onChanged: (docs, submitted) => setState(() {
+                                _docs = docs;
+                                _docsSubmitted = submitted;
+                              }),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -379,7 +434,17 @@ class _TenantInfo extends ConsumerWidget {
               leading: CircleAvatar(child: Text(initials(tenant.name))),
               title: Text(tenant.name,
                   style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text('+91 ${tenant.phone}'),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('+91 ${tenant.phone}'),
+                  if (tenant.isActive && !tenant.documentsSubmitted)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: DocsPendingChip(),
+                    ),
+                ],
+              ),
             ),
             const Divider(height: 1),
             info(Icons.meeting_room_outlined, 'Room',

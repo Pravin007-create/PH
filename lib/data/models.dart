@@ -135,6 +135,53 @@ class Settlement {
       );
 }
 
+/// An ID proof / document photo (or PDF) attached to a tenant.
+class TenantDocument {
+  const TenantDocument({
+    required this.id,
+    required this.label,
+    required this.path,
+    required this.addedAt,
+  });
+
+  final String id;
+
+  /// e.g. "Aadhaar card".
+  final String label;
+
+  /// File name inside the app's tenant_docs folder (see documents.dart).
+  final String path;
+  final DateTime addedAt;
+
+  bool get isPdf => path.toLowerCase().endsWith('.pdf');
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'label': label,
+        'path': path,
+        'addedAt': addedAt.toIso8601String(),
+      };
+
+  factory TenantDocument.fromJson(Map<String, dynamic> j) => TenantDocument(
+        id: j['id'] as String,
+        label: (j['label'] ?? 'Document') as String,
+        path: j['path'] as String,
+        addedAt: DateTime.parse(j['addedAt'] as String),
+      );
+}
+
+const documentTypes = [
+  'Aadhaar card',
+  'PAN card',
+  'Driving licence',
+  'Passport',
+  'Voter ID',
+  'College / Office ID',
+  'Rental agreement',
+  'Photo',
+  'Other',
+];
+
 class Tenant {
   final String id;
   final String name;
@@ -159,6 +206,12 @@ class Tenant {
   /// Filled in when the tenant moves out through the settlement screen.
   final Settlement? settlement;
 
+  /// ID proof photos / PDFs.
+  final List<TenantDocument> documents;
+
+  /// Owner has collected the tenant's ID proof.
+  final bool documentsSubmitted;
+
   const Tenant({
     required this.id,
     required this.name,
@@ -172,6 +225,8 @@ class Tenant {
     this.notes = '',
     this.createdAt,
     this.settlement,
+    this.documents = const [],
+    this.documentsSubmitted = false,
   });
 
   bool get isActive => leaveDate == null;
@@ -198,6 +253,8 @@ class Tenant {
     Settlement? settlement,
     bool clearSettlement = false,
     bool clearRelievingDate = false,
+    List<TenantDocument>? documents,
+    bool? documentsSubmitted,
   }) =>
       Tenant(
         id: id,
@@ -212,6 +269,8 @@ class Tenant {
         notes: notes,
         createdAt: createdAt,
         settlement: clearSettlement ? null : (settlement ?? this.settlement),
+        documents: documents ?? this.documents,
+        documentsSubmitted: documentsSubmitted ?? this.documentsSubmitted,
       );
 
   Map<String, dynamic> toJson() => {
@@ -227,6 +286,8 @@ class Tenant {
         'notes': notes,
         'createdAt': createdAt?.toIso8601String(),
         'settlement': settlement?.toJson(),
+        'documents': documents.map((d) => d.toJson()).toList(),
+        'documentsSubmitted': documentsSubmitted,
       };
 
   factory Tenant.fromJson(Map<String, dynamic> j) => Tenant(
@@ -251,6 +312,11 @@ class Tenant {
             ? null
             : Settlement.fromJson(
                 Map<String, dynamic>.from(j['settlement'] as Map)),
+        documents: [
+          for (final d in (j['documents'] ?? const []) as List)
+            TenantDocument.fromJson(Map<String, dynamic>.from(d as Map))
+        ],
+        documentsSubmitted: (j['documentsSubmitted'] ?? false) as bool,
       );
 }
 

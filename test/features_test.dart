@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pg_hostel_management/core/format.dart';
 import 'package:pg_hostel_management/data/backup.dart';
 import 'package:pg_hostel_management/data/calculations.dart';
+import 'package:pg_hostel_management/data/documents.dart';
 import 'package:pg_hostel_management/data/models.dart';
 import 'package:pg_hostel_management/data/store.dart';
 import 'package:pg_hostel_management/features/rooms/room_form_screen.dart';
@@ -455,6 +457,123 @@ void main() {
       await w.tapOn(tester, find.byTooltip('Electricity bills'));
       expect(find.text('Room 101'), findsOneWidget);
       expect(find.text('Collect ${money(500)}'), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('Tenant documents', () {
+    test('storeDocument copies the file into the folder; delete removes it',
+        () async {
+      final tmp = await Directory.systemTemp.createTemp('docs_test');
+      final src = File('${tmp.path}/IMG_001.JPG')..writeAsBytesSync([1, 2, 3]);
+      final dir = '${tmp.path}/tenant_docs';
+      final d = await storeDocument(
+          docsDir: dir, tenantId: 't1', sourcePath: src.path, label: 'Aadhaar card');
+      expect(d.path, startsWith('t1_'));
+      expect(d.path, endsWith('.jpg'));
+      expect(File(docFilePath(dir, d)).readAsBytesSync(), [1, 2, 3]);
+      // Round-trips through JSON with the tenant.
+      final t = Tenant(
+              id: 't1',
+              name: 'R',
+              phone: '1',
+              rent: 1,
+              joinDate: DateTime(2026),
+              documents: [d],
+              documentsSubmitted: true)
+          .toJson();
+      final back = Tenant.fromJson(jsonDecode(jsonEncode(t)));
+      expect(back.documents.single.path, d.path);
+      expect(back.documentsSubmitted, isTrue);
+      await deleteDocumentFiles(dir, [d]);
+      expect(File(docFilePath(dir, d)).existsSync(), isFalse);
+      await tmp.delete(recursive: true);
+    });
+
+    testWidgets('Badge when documents not submitted; checkbox clears it',
+        (tester) async {
+      final join = DateTime(2026, 1, 1).toIso8601String();
+      SharedPreferences.setMockInitialValues({
+        'tenants': jsonEncode([
+          {'id': 'a', 'name': 'Asha', 'phone': '9876543210', 'rent': 6000,
+            'joinDate': join},
+          {'id': 'b', 'name': 'Bala', 'phone': '9876543211', 'rent': 6000,
+            'joinDate': join, 'documentsSubmitted': true},
+        ]),
+      });
+      await w.pumpApp(tester, size: const Size(320, 700));
+      await w.tapOn(tester, find.text('Tenants'));
+      expect(find.textContaining('ID proof not submitted'), findsOneWidget); // Asha only
+      await w.tapOn(tester, find.text('Documents pending (1)'));
+      expect(find.text('Bala'), findsNothing);
+      await w.tapOn(tester, find.text('Documents pending (1)'));
+
+      await w.tapOn(tester, find.text('Asha'));
+      expect(find.textContaining('Document proof not submitted'), findsWidgets);
+      await w.tapOn(tester, find.text('Documents submitted'));
+      expect(find.text('ID proof collected'), findsOneWidget);
+      expect(
+          container(tester)
+              .read(tenantsProvider.notifier)
+              .byId('a')!
+              .documentsSubmitted,
+          isTrue);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Stored documents show as thumbnails and can be deleted',
+        (tester) async {
+      final tmp = Directory.systemTemp.createTempSync('docs_ui');
+      File('${tmp.path}/a_1.pdf').writeAsBytesSync([1]);
+      File('${tmp.path}/a_2.jpg').writeAsBytesSync([1]);
+      final join = DateTime(2026, 1, 1).toIso8601String();
+      final added = DateTime(2026, 11, 1).toIso8601String();
+      SharedPreferences.setMockInitialValues({
+        'tenants': jsonEncode([
+          {
+            'id': 'a', 'name': 'Asha', 'phone': '9876543210', 'rent': 6000,
+            'joinDate': join, 'documentsSubmitted': true,
+            'documents': [
+              {'id': '1', 'label': 'Rental agreement', 'path': 'a_1.pdf',
+                'addedAt': added},
+              {'id': '2', 'label': 'Aadhaar card', 'path': 'a_2.jpg',
+                'addedAt': added},
+            ],
+          },
+        ]),
+      });
+      await w.pumpApp(tester,
+          overrides: [docsDirProvider.overrideWith((ref) async => tmp.path)]);
+      await w.tapOn(tester, find.text('Tenants'));
+      await w.tapOn(tester, find.text('Asha'));
+      expect(find.text('Aadhaar card'), findsOneWidget);
+      expect(find.text('Rental agreement'), findsOneWidget);
+      expect(find.text('Add Document + (2 added)'), findsOneWidget);
+
+      await w.tapOn(tester, find.text('Aadhaar card'));
+      expect(find.byTooltip('Share'), findsOneWidget);
+      await w.tapOn(tester, find.byTooltip('Delete document'));
+      await w.tapOn(tester, find.text('Delete'));
+      expect(find.text('Aadhaar card'), findsNothing);
+      expect(File('${tmp.path}/a_2.jpg').existsSync(), isFalse);
+      expect(
+          container(tester).read(tenantsProvider.notifier).byId('a')!.documents
+              .map((d) => d.label),
+          ['Rental agreement']);
+    });
+
+    testWidgets('Add Document sheet offers camera, gallery and PDF',
+        (tester) async {
+      final tmp = Directory.systemTemp.createTempSync('docs_sheet');
+      await w.pumpApp(tester,
+          overrides: [docsDirProvider.overrideWith((ref) async => tmp.path)]);
+      await w.tapOn(tester, find.text('Tenants'));
+      await w.tapOn(tester, find.text('Add your first tenant'));
+      await w.tapOn(tester, find.text('Add Document +'));
+      expect(find.text('Take photo'), findsOneWidget);
+      expect(find.text('Choose from gallery'), findsOneWidget);
+      expect(find.text('Upload PDF'), findsOneWidget);
+      expect(find.text('Aadhaar card'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

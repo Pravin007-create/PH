@@ -18,6 +18,7 @@ class TenantsScreen extends ConsumerStatefulWidget {
 class _TenantsScreenState extends ConsumerState<TenantsScreen> {
   String _query = '';
   bool _showActive = true;
+  bool _docsPendingOnly = false;
 
   @override
   Widget build(BuildContext context) {
@@ -37,6 +38,7 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
     final q = _query.toLowerCase();
     final shown = all.where((t) {
       if (t.isActive != _showActive) return false;
+      if (_docsPendingOnly && t.documentsSubmitted) return false;
       if (q.isEmpty) return true;
       final room = rooms.byId(t.roomId);
       return t.name.toLowerCase().contains(q) ||
@@ -46,6 +48,8 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     final activeCount = all.where((t) => t.isActive).length;
+    final docsPending =
+        all.where((t) => t.isActive && !t.documentsSubmitted).length;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Tenants')),
@@ -94,6 +98,21 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
                         onSelectionChanged: (v) =>
                             setState(() => _showActive = v.first),
                       ),
+                      if (_showActive && (docsPending > 0 || _docsPendingOnly))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: FilterChip(
+                              avatar: const Icon(Icons.gpp_maybe_rounded,
+                                  size: 18, color: Color(0xFFDC2626)),
+                              label: Text('Documents pending ($docsPending)'),
+                              selected: _docsPendingOnly,
+                              onSelected: (v) =>
+                                  setState(() => _docsPendingOnly = v),
+                            ),
+                          ),
+                        ),
                       const SizedBox(height: 12),
                       if (shown.isEmpty)
                         Padding(
@@ -124,17 +143,27 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w600)),
-                            subtitle: Text(
-                              [
-                                rooms.byId(t.roomId) == null
-                                    ? 'No room'
-                                    : 'Room ${rooms.byId(t.roomId)!.number}',
-                                money(t.rent),
-                                if (t.isActive && t.relievingDate != null)
-                                  'Leaving ${fmtDate(t.relievingDate!)}',
-                              ].join(' · '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  [
+                                    rooms.byId(t.roomId) == null
+                                        ? 'No room'
+                                        : 'Room ${rooms.byId(t.roomId)!.number}',
+                                    money(t.rent),
+                                    if (t.isActive && t.relievingDate != null)
+                                      'Leaving ${fmtDate(t.relievingDate!)}',
+                                  ].join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (t.isActive && !t.documentsSubmitted)
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 4),
+                                    child: DocsPendingChip(short: true),
+                                  ),
+                              ],
                             ),
                             trailing: !t.isActive
                                 ? const StatusChip('Moved out',

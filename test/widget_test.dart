@@ -10,14 +10,15 @@ import 'package:pg_hostel_management/features/reports/report_builder.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> pumpApp(WidgetTester tester,
-    {Size size = const Size(360, 740)}) async {
+    {Size size = const Size(360, 740),
+    List<Override> overrides = const []}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   AuthState.passwordVerified = true;
   final prefs = await SharedPreferences.getInstance();
   await tester.pumpWidget(ProviderScope(
-    overrides: [prefsProvider.overrideWithValue(prefs)],
+    overrides: [prefsProvider.overrideWithValue(prefs), ...overrides],
     child: const PGHostelApp(),
   ));
   await tester.pumpAndSettle();
