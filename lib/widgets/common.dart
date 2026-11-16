@@ -1,5 +1,3 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -595,15 +593,27 @@ class GlassBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
-    Widget blob(Color c, double size) => Container(
+    // Soft colour glows drawn as radial gradients. (A real blur filter
+    // looked the same but cost a lot on every frame.)
+    Widget glow(Color c, double size) => Container(
           width: size,
           height: size,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: c),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [
+                c,
+                c.withValues(alpha: c.a * 0.45),
+                c.withValues(alpha: 0)
+              ],
+              stops: const [0, 0.45, 1],
+            ),
+          ),
         );
     final glassCard = CardThemeData(
       color: dark
           ? Colors.white.withValues(alpha: 0.07)
-          : Colors.white.withValues(alpha: 0.58),
+          : Colors.white.withValues(alpha: 0.62),
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       margin: EdgeInsets.zero,
@@ -620,47 +630,36 @@ class GlassBackground extends StatelessWidget {
           child: ColoredBox(
             // Cool, low-colour mist so the glass reads as clear.
             color: dark ? const Color(0xFF0B1220) : const Color(0xFFD5DEE8),
-            child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 70, sigmaY: 70),
-              child: Stack(children: [
-                Positioned(
-                    top: -80,
-                    left: -60,
-                    child: blob(
-                        (dark
-                                ? const Color(0xFF334155)
-                                : const Color(0xFF94A3B8))
-                            .withValues(alpha: dark ? 0.75 : 0.75),
-                        320)),
-                Positioned(
-                    top: 140,
-                    right: -90,
-                    child: blob(
-                        (dark
-                                ? const Color(0xFF1E3A5F)
-                                : const Color(0xFF7DA2C1))
-                            .withValues(alpha: dark ? 0.65 : 0.65),
-                        300)),
-                Positioned(
-                    top: 520,
-                    left: -70,
-                    child: blob(
-                        (dark
-                                ? const Color(0xFF475569)
-                                : const Color(0xFFCBD5E1))
-                            .withValues(alpha: dark ? 0.40 : 0.80),
-                        280)),
-                Positioned(
-                    bottom: -60,
-                    right: -40,
-                    child: blob(
-                        (dark
-                                ? const Color(0xFF164E63)
-                                : const Color(0xFFA5C4C9))
-                            .withValues(alpha: dark ? 0.35 : 0.40),
-                        260)),
-              ]),
-            ),
+            child: Stack(clipBehavior: Clip.hardEdge, children: [
+              Positioned(
+                  top: -220,
+                  left: -200,
+                  child: glow(
+                      (dark ? const Color(0xFF334155) : const Color(0xFF94A3B8))
+                          .withValues(alpha: 0.75),
+                      600)),
+              Positioned(
+                  top: 0,
+                  right: -240,
+                  child: glow(
+                      (dark ? const Color(0xFF1E3A5F) : const Color(0xFF7DA2C1))
+                          .withValues(alpha: 0.65),
+                      580)),
+              Positioned(
+                  top: 380,
+                  left: -220,
+                  child: glow(
+                      (dark ? const Color(0xFF475569) : const Color(0xFFCBD5E1))
+                          .withValues(alpha: dark ? 0.40 : 0.85),
+                      560)),
+              Positioned(
+                  bottom: -220,
+                  right: -200,
+                  child: glow(
+                      (dark ? const Color(0xFF164E63) : const Color(0xFFA5C4C9))
+                          .withValues(alpha: dark ? 0.35 : 0.45),
+                      540)),
+            ]),
           ),
         ),
       ),
@@ -669,10 +668,11 @@ class GlassBackground extends StatelessWidget {
   }
 }
 
-/// Apple "Liquid Glass" style panel: real background blur, a translucent
-/// fill that's brighter at the top (light sheen), a bright edge that fades
-/// around the shape, and a soft drop shadow.
-/// [tint] colours the glass (e.g. brand indigo for the dashboard header).
+/// Apple "Liquid Glass" style panel: a translucent fill, a light sheen across
+/// the top, a bright edge that fades around the shape, and a soft shadow.
+/// No real-time blur (that dropped scrolling to ~20 fps); the background is
+/// already soft, so the look is almost the same and scrolling stays smooth.
+/// [tint] colours the glass.
 class LiquidGlass extends StatelessWidget {
   const LiquidGlass({
     super.key,
@@ -680,14 +680,12 @@ class LiquidGlass extends StatelessWidget {
     this.onTap,
     this.radius = 24,
     this.tint,
-    this.blur = 22,
   });
 
   final Widget child;
   final VoidCallback? onTap;
   final double radius;
   final Color? tint;
-  final double blur;
 
   @override
   Widget build(BuildContext context) {
@@ -695,80 +693,64 @@ class LiquidGlass extends StatelessWidget {
     final br = BorderRadius.circular(radius);
     final List<Color> fill = tint != null
         ? [
-            tint!.withValues(alpha: 0.82),
+            tint!.withValues(alpha: 0.88),
             Color.lerp(tint, const Color(0xFF9333EA), 0.55)!
-                .withValues(alpha: 0.72),
+                .withValues(alpha: 0.80),
           ]
         : dark
             ? [
                 Colors.white.withValues(alpha: 0.16),
-                Colors.white.withValues(alpha: 0.05),
+                Colors.white.withValues(alpha: 0.06),
               ]
             : [
-                Colors.white.withValues(alpha: 0.72),
-                Colors.white.withValues(alpha: 0.38),
+                Colors.white.withValues(alpha: 0.80),
+                Colors.white.withValues(alpha: 0.48),
               ];
+    final sheen = Colors.white
+        .withValues(alpha: tint != null ? 0.22 : (dark ? 0.10 : 0.50));
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: br,
         boxShadow: [
           BoxShadow(
             color: (tint ?? const Color(0xFF0F172A))
-                .withValues(alpha: tint != null ? 0.22 : (dark ? 0.35 : 0.08)),
-            blurRadius: 30,
-            spreadRadius: -10,
-            offset: const Offset(0, 12),
+                .withValues(alpha: tint != null ? 0.22 : (dark ? 0.30 : 0.07)),
+            blurRadius: 18,
+            spreadRadius: -6,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: br,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-          child: CustomPaint(
-            foregroundPainter: _GlassEdgePainter(radius, dark: dark),
-            child: Material(
-              type: MaterialType.transparency,
-              child: InkWell(
-                onTap: onTap,
+      child: CustomPaint(
+        foregroundPainter: _GlassEdgePainter(radius, dark: dark),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: br,
+            child: Ink(
+              decoration: BoxDecoration(
                 borderRadius: br,
-                child: Ink(
-                  decoration: BoxDecoration(
-                    borderRadius: br,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: fill,
-                    ),
-                  ),
-                  child: Stack(fit: StackFit.passthrough, children: [
-                    // Specular sheen across the top third.
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      top: 0,
-                      height: 46,
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.white.withValues(
-                                    alpha: tint != null
-                                        ? 0.22
-                                        : (dark ? 0.10 : 0.45)),
-                                Colors.white.withValues(alpha: 0),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    child,
-                  ]),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: fill,
                 ),
+              ),
+              // Sheen across the top, painted inside the rounded shape
+              // (no clipping layer needed).
+              child: DecoratedBox(
+                position: DecorationPosition.foreground,
+                decoration: BoxDecoration(
+                  borderRadius: br,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [sheen, sheen.withValues(alpha: 0)],
+                    stops: const [0, 0.32],
+                  ),
+                ),
+                child: child,
               ),
             ),
           ),
