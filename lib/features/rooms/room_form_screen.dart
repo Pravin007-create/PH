@@ -654,7 +654,7 @@ class _BillCard extends ConsumerWidget {
                     '${fmtUnits(bill.units)} units × ${money(bill.unitRate ?? 0)}'
               else if (bill.units > 0)
                 '${fmtUnits(bill.units)} units',
-              '${bill.tenantIds.length} people · ${money(bill.share)} each',
+              '${bill.tenantIds.length} people · ${bill.shareText(money)} each',
             ].join('\n')),
             isThreeLine: bill.fromMeter,
             trailing: IconButton(
@@ -754,7 +754,9 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
 
   double _n(TextEditingController c) => double.tryParse(c.text.trim()) ?? 0;
   double get _meterUnits => max(0, _n(_now) - _n(_last));
-  double get _total => _useMeter ? _meterUnits * _n(_unitRate) : _n(_amount);
+  // Bills are paid in whole rupees.
+  double get _total =>
+      (_useMeter ? _meterUnits * _n(_unitRate) : _n(_amount)).roundToDouble();
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;
@@ -772,7 +774,7 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
           id: newId(),
           roomId: widget.room.id,
           month: _month,
-          amount: double.parse(_total.toStringAsFixed(2)),
+          amount: _total,
           units: _useMeter ? _meterUnits : _n(_units),
           previousReading: _useMeter ? _n(_last) : null,
           currentReading: _useMeter ? _n(_now) : null,
@@ -811,7 +813,13 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
         t.id: t,
     }.values.toList();
     final total = _total;
-    final share = _selected.isEmpty ? 0.0 : total / _selected.length;
+    // Whole-rupee split: ₹1,000 ÷ 3 → ₹334 + ₹333 + ₹333.
+    final n = _selected.length;
+    final base = n == 0 ? 0 : total.round() ~/ n;
+    final extra = n == 0 ? 0 : total.round() - base * n;
+    final shareText = extra == 0
+        ? money(base.toDouble())
+        : '${money(base.toDouble())}–${base + 1}';
     final months = [
       for (var i = 0; i >= -12; i--) addMonths(monthOf(DateTime.now()), i)
     ];
@@ -988,7 +996,7 @@ class _ElectricityBillSheetState extends ConsumerState<ElectricityBillSheet> {
                       child: Text(_selected.isEmpty
                           ? 'Choose who shares the bill'
                           : '${money(total)} ÷ ${_selected.length} = '
-                              '${money(share)} per person'),
+                              '$shareText per person'),
                     ),
                   ]),
                 ),

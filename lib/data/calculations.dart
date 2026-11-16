@@ -415,9 +415,9 @@ class ElectricityDue {
   final double paid;
 
   DateTime get month => bill.month;
-  double get share => bill.share;
+  double get share => bill.shareFor(tenant.id);
   double get due => max(0, share - paid);
-  bool get isPaid => due < 0.5;
+  bool get isPaid => due < 0.01;
 }
 
 /// Electricity paid by [tenantId] for [month].
@@ -449,7 +449,7 @@ List<ElectricityDue> electricityShares(
       if (t == null) continue;
       final key = '$id|${b.month.year}-${b.month.month}';
       final available = left[key] ?? electricityPaid(id, b.month, payments);
-      final used = min(available, b.share);
+      final used = min(available, b.shareFor(id));
       left[key] = available - used;
       result.add(ElectricityDue(b, t, used));
     }

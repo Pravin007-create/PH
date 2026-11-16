@@ -581,7 +581,7 @@ List<pw.Widget> _electricity(ReportData d) {
                 rate(b),
                 moneyPdf(b.amount),
                 '${b.tenantIds.length}',
-                moneyPdf(b.share),
+                b.shareText(moneyPdf),
                 moneyPdf(sum(bs.map((x) => x.paid))),
                 moneyPdf(sum(bs.map((x) => x.due))),
               ];

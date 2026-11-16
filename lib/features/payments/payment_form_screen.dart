@@ -41,6 +41,7 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.month == null) _pickElectricityMonth();
     _amount = TextEditingController(text: _suggestedAmount());
     _note = TextEditingController();
   }
@@ -64,6 +65,20 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
   }
 
   void _refreshSuggestion() => _amount.text = _suggestedAmount();
+
+  /// Electricity bills are for a past month (e.g. October's bill paid in
+  /// November). Jump to the tenant's oldest unpaid bill month so the payment
+  /// is matched to the right bill.
+  void _pickElectricityMonth() {
+    if (_type != PaymentType.electricity || _tenantId == null) return;
+    final pending = ref
+        .read(electricityDuesProvider)
+        .where((d) => d.tenant.id == _tenantId)
+        .map((d) => d.month)
+        .toList()
+      ..sort();
+    if (pending.isNotEmpty) _month = monthOf(pending.first);
+  }
 
   @override
   void dispose() {
@@ -153,6 +168,7 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
                               v == null ? 'Please choose a tenant' : null,
                           onChanged: (v) => setState(() {
                             _tenantId = v;
+                            _pickElectricityMonth();
                             _refreshSuggestion();
                           }),
                         ),
@@ -164,12 +180,15 @@ class _PaymentFormScreenState extends ConsumerState<PaymentFormScreen> {
                               selected: _type == t,
                               onSelected: (_) => setState(() {
                                 _type = t;
+                                _pickElectricityMonth();
                                 _refreshSuggestion();
                               }),
                             ),
                         ]),
                         const SizedBox(height: 14),
                         DropdownButtonFormField<DateTime>(
+                          // Rebuild when the month is changed automatically.
+                          key: ValueKey(_month),
                           initialValue:
                               months.firstWhere((m) => sameMonth(m, _month)),
                           decoration: const InputDecoration(

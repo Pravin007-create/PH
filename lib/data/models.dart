@@ -473,7 +473,32 @@ class ElectricityBill {
   final DateTime createdAt;
 
   /// Each tenant's share.
-  double get share => tenantIds.isEmpty ? 0 : amount / tenantIds.length;
+  /// Bill in whole rupees (shares always add up to exactly this).
+  int get roundedAmount => amount.round();
+
+  /// Smallest share. With a remainder, the first tenants pay ₹1 more:
+  /// ₹1,000 ÷ 3 → ₹334, ₹333, ₹333.
+  double get share =>
+      tenantIds.isEmpty ? 0 : (roundedAmount ~/ tenantIds.length).toDouble();
+
+  /// True when the bill doesn't divide evenly.
+  bool get unevenSplit =>
+      tenantIds.isNotEmpty && roundedAmount % tenantIds.length != 0;
+
+  /// Whole-rupee share for one tenant; all shares sum to [roundedAmount].
+  double shareFor(String tenantId) {
+    final i = tenantIds.indexOf(tenantId);
+    if (i < 0) return 0;
+    final n = tenantIds.length;
+    final base = roundedAmount ~/ n;
+    final extra = roundedAmount - base * n;
+    return (base + (i < extra ? 1 : 0)).toDouble();
+  }
+
+  /// "₹450" or "₹333–334" for display.
+  String shareText(String Function(double) money) => unevenSplit
+      ? '${money(share)}–${(share + 1).toStringAsFixed(0)}'
+      : money(share);
 
   Map<String, dynamic> toJson() => {
         'id': id,

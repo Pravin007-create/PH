@@ -848,4 +848,72 @@ void main() {
     expect(find.text('Received this month'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  test('Electricity ₹1,000 ÷ 3 → ₹334 + ₹333 + ₹333; paying shares clears all',
+      () {
+    final now = DateTime(2026, 11, 10);
+    final tenants = [
+      for (final id in ['a', 'b', 'c'])
+        Tenant(id: id, name: id, phone: '1', rent: 1, joinDate: DateTime(2026))
+    ];
+    final bill = ElectricityBill(
+        id: 'e',
+        roomId: 'r',
+        month: DateTime(2026, 10),
+        amount: 1000,
+        tenantIds: const ['a', 'b', 'c'],
+        createdAt: now);
+    expect([for (final t in tenants) bill.shareFor(t.id)], [334, 333, 333]);
+    final shares = electricityShares([bill], tenants, [
+      for (final t in tenants)
+        Payment(
+            id: t.id,
+            tenantId: t.id,
+            amount: bill.shareFor(t.id),
+            type: PaymentType.electricity,
+            month: DateTime(2026, 10),
+            date: now)
+    ]);
+    expect(shares.every((d) => d.isPaid), isTrue);
+    expect(shares.fold<double>(0, (a, d) => a + d.paid), 1000); // collected
+    expect(shares.fold<double>(0, (a, d) => a + d.due), 0); // pending
+  });
+
+  testWidgets(
+      'Record Payment → Electricity picks the bill month, so collected updates',
+      (tester) async {
+    final now = DateTime.now();
+    final lastMonth = DateTime(now.year, now.month - 1);
+    final join = DateTime(2026, 1, 1).toIso8601String();
+    SharedPreferences.setMockInitialValues({
+      'tenants': jsonEncode([
+        for (final n in ['Asha', 'Bala', 'Chitra'])
+          {'id': n, 'name': n, 'phone': '9876543210', 'roomId': 'r1',
+            'rent': 6000, 'joinDate': join, 'createdAt': join}
+      ]),
+      'electricity_bills': jsonEncode([
+        ElectricityBill(id: 'e1', roomId: 'r1', month: lastMonth, amount: 1000,
+                tenantIds: const ['Asha', 'Bala', 'Chitra'], createdAt: now)
+            .toJson()
+      ]),
+    });
+    await w.pumpApp(tester);
+    await w.tapOn(tester, find.text('Payments'));
+    await w.tapOn(tester, find.text('Record Payment'));
+    await w.tapOn(tester, find.byType(DropdownButtonFormField<String>));
+    await w.tapOn(tester, find.text('Asha').last);
+    await w.tapOn(tester, find.text('Electricity'));
+    // Month jumps to last month's bill and amount = Asha's share (₹334).
+    expect(find.text(fmtMonth(lastMonth)), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, '334'), findsOneWidget);
+    await w.tapOn(tester, find.text('Save Payment'));
+
+    final c = container(tester);
+    final asha = electricityShares(c.read(electricityBillsProvider),
+            c.read(tenantsProvider), c.read(paymentsProvider))
+        .firstWhere((d) => d.tenant.id == 'Asha');
+    expect(asha.isPaid, isTrue);
+    expect(asha.paid, 334);
+    expect(tester.takeException(), isNull);
+  });
 }
