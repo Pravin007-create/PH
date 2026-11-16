@@ -52,11 +52,11 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
         all.where((t) => t.isActive && !t.documentsSubmitted).length;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Tenants')),
+      appBar: AppBar(title: Text(context.tr('Tenants'))),
       floatingActionButton: all.isEmpty
           ? null
           : AddButton(
-              label: 'Add Tenant',
+              label: context.tr('Add Tenant'),
               onPressed: () => context.push('/tenants/new')),
       body: all.isEmpty
           ? Center(
@@ -79,19 +79,20 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       SearchField(
-                          hint: 'Search name, phone or room',
+                          hint: context.tr('Search name, phone or room'),
                           onChanged: (v) => setState(() => _query = v)),
                       const SizedBox(height: 12),
                       SegmentedButton<bool>(
                         segments: [
                           ButtonSegment(
                               value: true,
-                              label: Text('Staying ($activeCount)'),
+                              label: Text(context
+                                  .tr('Staying ({n})', {'n': activeCount})),
                               icon: const Icon(Icons.home_rounded)),
                           ButtonSegment(
                               value: false,
-                              label: Text(
-                                  'Moved out (${all.length - activeCount})'),
+                              label: Text(context.tr('Moved out ({n})',
+                                  {'n': all.length - activeCount})),
                               icon: const Icon(Icons.logout_rounded)),
                         ],
                         selected: {_showActive},
@@ -106,7 +107,8 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
                             child: FilterChip(
                               avatar: const Icon(Icons.gpp_maybe_rounded,
                                   size: 18, color: Color(0xFFDC2626)),
-                              label: Text('Documents pending ($docsPending)'),
+                              label: Text(context.tr('Documents pending ({n})',
+                                  {'n': docsPending})),
                               selected: _docsPendingOnly,
                               onSelected: (v) =>
                                   setState(() => _docsPendingOnly = v),
@@ -149,11 +151,14 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
                                 Text(
                                   [
                                     rooms.byId(t.roomId) == null
-                                        ? 'No room'
-                                        : 'Room ${rooms.byId(t.roomId)!.number}',
+                                        ? context.tr('No room')
+                                        : context.tr('Room {n}', {
+                                            'n': rooms.byId(t.roomId)!.number
+                                          }),
                                     money(t.rent),
                                     if (t.isActive && t.relievingDate != null)
-                                      'Leaving ${fmtDate(t.relievingDate!)}',
+                                      context.tr('Leaving {d}',
+                                          {'d': fmtDate(t.relievingDate!)}),
                                   ].join(' · '),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -166,12 +171,12 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
                               ],
                             ),
                             trailing: !t.isActive
-                                ? const StatusChip('Moved out',
+                                ? StatusChip(context.tr('Moved out'),
                                     color: Colors.grey)
                                 : overdueIds.contains(t.id) &&
                                         !(status[t.id]?.isOverdue ?? false)
-                                    ? const StatusChip('Overdue',
-                                        color: Color(0xFFDC2626))
+                                    ? StatusChip(context.tr('Overdue'),
+                                        color: const Color(0xFFDC2626))
                                     : status[t.id] == null
                                         ? null
                                         : DueChip(status[t.id]!),

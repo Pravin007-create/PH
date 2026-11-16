@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/l10n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -49,7 +51,7 @@ class AppShell extends ConsumerWidget {
                       NavigationRailDestination(
                         icon: icon(i, t.$1),
                         selectedIcon: icon(i, t.$2),
-                        label: Text(t.$3),
+                        label: Text(context.tr(t.$3)),
                       ),
                   ],
                 ),
@@ -67,7 +69,7 @@ class AppShell extends ConsumerWidget {
                     NavigationDestination(
                       icon: icon(i, t.$1),
                       selectedIcon: icon(i, t.$2),
-                      label: t.$3,
+                      label: context.tr(t.$3),
                     ),
                 ],
               ),

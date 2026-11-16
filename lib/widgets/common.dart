@@ -1,7 +1,12 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/format.dart';
+import '../core/l10n.dart';
+
+export '../core/l10n.dart';
 
 /// Centers content and limits its width on tablets / landscape.
 class PageBody extends StatelessWidget {
@@ -46,6 +51,7 @@ class StatCard extends StatelessWidget {
     required this.color,
     this.caption,
     this.onTap,
+    this.glass = false,
   });
 
   final IconData icon;
@@ -55,48 +61,48 @@ class StatCard extends StatelessWidget {
   final Color color;
   final VoidCallback? onTap;
 
+  /// Liquid-glass style (dashboard).
+  final bool glass;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              IconBadge(icon: icon, color: color),
-              const SizedBox(height: 12),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  value,
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              if (caption != null)
-                Text(
-                  caption!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall?.copyWith(color: color),
-                ),
-            ],
+    final content = Padding(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconBadge(icon: icon, color: color),
+          const SizedBox(height: 12),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
           ),
-        ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          if (caption != null)
+            Text(
+              caption!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(color: color),
+            ),
+        ],
       ),
     );
+    if (glass) return LiquidGlass(onTap: onTap, child: content);
+    return Card(child: InkWell(onTap: onTap, child: content));
   }
 }
 
@@ -134,13 +140,16 @@ class ResponsiveGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, c) {
-      final cols =
-          ((c.maxWidth + spacing) / (minItemWidth + spacing)).floor().clamp(2, 6);
+      final cols = ((c.maxWidth + spacing) / (minItemWidth + spacing))
+          .floor()
+          .clamp(2, 6);
       final w = (c.maxWidth - spacing * (cols - 1)) / cols;
       return Wrap(
         spacing: spacing,
         runSpacing: spacing,
-        children: [for (final child in children) SizedBox(width: w, child: child)],
+        children: [
+          for (final child in children) SizedBox(width: w, child: child)
+        ],
       );
     });
   }
@@ -223,39 +232,89 @@ class EmptyState extends StatelessWidget {
 }
 
 /// "‹  November 2026  ›" month picker.
+/// [prominent] = filled brand-colour bar with a "MONTH" label, for screens
+/// where the month drives everything below (pinned at the top).
 class MonthSwitcher extends StatelessWidget {
-  const MonthSwitcher({super.key, required this.month, required this.onChanged});
+  const MonthSwitcher({
+    super.key,
+    required this.month,
+    required this.onChanged,
+    this.prominent = false,
+  });
   final DateTime month;
   final ValueChanged<DateTime> onChanged;
+  final bool prominent;
 
   @override
   Widget build(BuildContext context) {
     final isCurrent = sameMonth(month, DateTime.now());
-    return Card(
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Previous month',
-            icon: const Icon(Icons.chevron_left_rounded),
-            onPressed: () => onChanged(addMonths(month, -1)),
-          ),
-          Expanded(
-            child: Text(
-              fmtMonth(month),
-              textAlign: TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Next month',
-            icon: const Icon(Icons.chevron_right_rounded),
-            onPressed: isCurrent ? null : () => onChanged(addMonths(month, 1)),
-          ),
+    // Fixed brand colours (same as the logo) so it reads well in dark mode.
+    final fg = prominent ? Colors.white : null;
+    final row = Row(
+      children: [
+        IconButton(
+          tooltip: 'Previous month',
+          color: fg,
+          icon: const Icon(Icons.chevron_left_rounded),
+          onPressed: () => onChanged(addMonths(month, -1)),
+        ),
+        Expanded(
+          child: prominent
+              ? Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('MONTH',
+                      style: TextStyle(
+                          color: fg!.withValues(alpha: 0.75),
+                          fontSize: 10,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w700)),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.calendar_month_rounded, size: 18, color: fg),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        fmtMonth(month),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            color: fg,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ]),
+                ])
+              : Text(
+                  fmtMonth(month),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+        ),
+        IconButton(
+          tooltip: 'Next month',
+          color: fg,
+          disabledColor: fg?.withValues(alpha: 0.35),
+          icon: const Icon(Icons.chevron_right_rounded),
+          onPressed: isCurrent ? null : () => onChanged(addMonths(month, 1)),
+        ),
+      ],
+    );
+    if (!prominent) return Card(child: row);
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+            colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)]),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+              color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 3)),
         ],
       ),
+      child: row,
     );
   }
 }
@@ -493,4 +552,261 @@ class OptionalDateField extends StatelessWidget {
           ),
         ),
       );
+}
+
+/// Amber "₹ Collect" button – same colour and icon everywhere so it's easy
+/// to recognise without reading.
+class CollectButton extends StatelessWidget {
+  const CollectButton({super.key, required this.onPressed, this.amount});
+  final VoidCallback onPressed;
+
+  /// Shown after the label when given: "Collect ₹500".
+  final double? amount;
+
+  static const color = Color(0xFFF59E0B); // amber
+  static const onColor = Color(0xFF3B2300); // dark brown text, high contrast
+
+  @override
+  Widget build(BuildContext context) => FilledButton.icon(
+        style: FilledButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: onColor,
+          minimumSize: const Size(0, 38),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          visualDensity: VisualDensity.compact,
+          textStyle: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        onPressed: onPressed,
+        icon: const Icon(Icons.payments_rounded, size: 18),
+        label: Text(amount == null
+            ? context.tr('Collect')
+            : '${context.tr('Collect')} ${money(amount!)}'),
+      );
+}
+
+/// Apple-style frosted glass look for a screen: a soft, blurred colourful
+/// background with translucent cards (white border, no hard shadow) on top.
+/// Every [Card] inside [child] picks up the glass style automatically.
+class GlassBackground extends StatelessWidget {
+  const GlassBackground({super.key, required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+    Widget blob(Color c, double size) => Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: c),
+        );
+    final glassCard = CardThemeData(
+      color: dark
+          ? Colors.white.withValues(alpha: 0.07)
+          : Colors.white.withValues(alpha: 0.58),
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(22),
+        side: BorderSide(
+            color: Colors.white.withValues(alpha: dark ? 0.12 : 0.75)),
+      ),
+    );
+    return Stack(children: [
+      Positioned.fill(
+        child: RepaintBoundary(
+          child: ColoredBox(
+            // Cool, low-colour mist so the glass reads as clear.
+            color: dark ? const Color(0xFF0B1220) : const Color(0xFFD5DEE8),
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 70, sigmaY: 70),
+              child: Stack(children: [
+                Positioned(
+                    top: -80,
+                    left: -60,
+                    child: blob(
+                        (dark
+                                ? const Color(0xFF334155)
+                                : const Color(0xFF94A3B8))
+                            .withValues(alpha: dark ? 0.75 : 0.75),
+                        320)),
+                Positioned(
+                    top: 140,
+                    right: -90,
+                    child: blob(
+                        (dark
+                                ? const Color(0xFF1E3A5F)
+                                : const Color(0xFF7DA2C1))
+                            .withValues(alpha: dark ? 0.65 : 0.65),
+                        300)),
+                Positioned(
+                    top: 520,
+                    left: -70,
+                    child: blob(
+                        (dark
+                                ? const Color(0xFF475569)
+                                : const Color(0xFFCBD5E1))
+                            .withValues(alpha: dark ? 0.40 : 0.80),
+                        280)),
+                Positioned(
+                    bottom: -60,
+                    right: -40,
+                    child: blob(
+                        (dark
+                                ? const Color(0xFF164E63)
+                                : const Color(0xFFA5C4C9))
+                            .withValues(alpha: dark ? 0.35 : 0.40),
+                        260)),
+              ]),
+            ),
+          ),
+        ),
+      ),
+      Theme(data: theme.copyWith(cardTheme: glassCard), child: child),
+    ]);
+  }
+}
+
+/// Apple "Liquid Glass" style panel: real background blur, a translucent
+/// fill that's brighter at the top (light sheen), a bright edge that fades
+/// around the shape, and a soft drop shadow.
+/// [tint] colours the glass (e.g. brand indigo for the dashboard header).
+class LiquidGlass extends StatelessWidget {
+  const LiquidGlass({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.radius = 24,
+    this.tint,
+    this.blur = 22,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final double radius;
+  final Color? tint;
+  final double blur;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final br = BorderRadius.circular(radius);
+    final List<Color> fill = tint != null
+        ? [
+            tint!.withValues(alpha: 0.82),
+            Color.lerp(tint, const Color(0xFF9333EA), 0.55)!
+                .withValues(alpha: 0.72),
+          ]
+        : dark
+            ? [
+                Colors.white.withValues(alpha: 0.16),
+                Colors.white.withValues(alpha: 0.05),
+              ]
+            : [
+                Colors.white.withValues(alpha: 0.72),
+                Colors.white.withValues(alpha: 0.38),
+              ];
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: br,
+        boxShadow: [
+          BoxShadow(
+            color: (tint ?? const Color(0xFF0F172A))
+                .withValues(alpha: tint != null ? 0.22 : (dark ? 0.35 : 0.08)),
+            blurRadius: 30,
+            spreadRadius: -10,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: br,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: CustomPaint(
+            foregroundPainter: _GlassEdgePainter(radius, dark: dark),
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: onTap,
+                borderRadius: br,
+                child: Ink(
+                  decoration: BoxDecoration(
+                    borderRadius: br,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: fill,
+                    ),
+                  ),
+                  child: Stack(fit: StackFit.passthrough, children: [
+                    // Specular sheen across the top third.
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      height: 46,
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.white.withValues(
+                                    alpha: tint != null
+                                        ? 0.22
+                                        : (dark ? 0.10 : 0.45)),
+                                Colors.white.withValues(alpha: 0),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    child,
+                  ]),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bright rim at top-left fading to faint at bottom-right, like light
+/// catching the edge of glass.
+class _GlassEdgePainter extends CustomPainter {
+  _GlassEdgePainter(this.radius, {required this.dark});
+  final double radius;
+  final bool dark;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(
+        rect.deflate(0.75), Radius.circular(radius - 0.75));
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..shader = LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: dark ? 0.45 : 0.95),
+          Colors.white.withValues(alpha: dark ? 0.06 : 0.25),
+          Colors.white.withValues(alpha: dark ? 0.20 : 0.70),
+        ],
+        stops: const [0, 0.55, 1],
+      ).createShader(rect);
+    canvas.drawRRect(rrect, paint);
+  }
+
+  @override
+  bool shouldRepaint(_GlassEdgePainter old) =>
+      old.radius != radius || old.dark != dark;
 }

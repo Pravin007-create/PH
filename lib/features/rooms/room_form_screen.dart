@@ -691,11 +691,10 @@ class _BillCard extends ConsumerWidget {
                       : '${money(s.due)} pending'),
               trailing: s.isPaid
                   ? const StatusChip('Paid', color: AppColors.success)
-                  : TextButton(
+                  : CollectButton(
                       onPressed: () => context.push(
                           '/payments/new?tenant=${s.tenant.id}&type=electricity'
                           '&month=${bill.month.toIso8601String()}'),
-                      child: const Text('Collect'),
                     ),
             ),
           if (pending > 0)

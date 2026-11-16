@@ -50,7 +50,8 @@ enum ReportType {
   rent('Rent Collection & Dues',
       'Every tenant: rent, amount paid and balance due for the month'),
   expenses('Expense Report', 'All expenses for the month with category totals'),
-  tenants('Tenant List', 'All current tenants with room, phone, rent and deposit'),
+  tenants(
+      'Tenant List', 'All current tenants with room, phone, rent and deposit'),
   electricity('Electricity Bill Report',
       'Room-wise meter readings, units, rate, bill amount and each person\'s share');
 
@@ -150,7 +151,8 @@ pw.Widget _header(ReportData d, ReportType type) {
   );
 }
 
-pw.Widget _kpi(String label, String value, {PdfColor color = PdfColors.black}) =>
+pw.Widget _kpi(String label, String value,
+        {PdfColor color = PdfColors.black}) =>
     pw.Expanded(
       child: pw.Container(
         margin: const pw.EdgeInsets.all(4),
@@ -160,11 +162,14 @@ pw.Widget _kpi(String label, String value, {PdfColor color = PdfColors.black}) =
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text(label, style: const pw.TextStyle(fontSize: 9, color: _muted)),
+            pw.Text(label,
+                style: const pw.TextStyle(fontSize: 9, color: _muted)),
             pw.SizedBox(height: 4),
             pw.Text(value,
                 style: pw.TextStyle(
-                    fontSize: 14, fontWeight: pw.FontWeight.bold, color: color)),
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                    color: color)),
           ],
         ),
       ),
@@ -221,17 +226,22 @@ List<pw.Widget> _summary(ReportData d) {
       _kpi('Active tenants', '${s.activeTenants}'),
     ]),
     _title('Income'),
-    _table(['Item', 'Amount'], [
-      ['Rent expected', moneyPdf(s.rentExpected)],
-      ['Rent collected', moneyPdf(s.rentCollected)],
-      for (final t in PaymentType.values.where((t) => t != PaymentType.rent))
+    _table(
+        ['Item', 'Amount'],
         [
-          t.label,
-          moneyPdf(d.payments
-              .where((p) => p.type == t && sameMonth(p.month, d.month))
-              .fold<double>(0, (a, p) => a + p.amount))
+          ['Rent expected', moneyPdf(s.rentExpected)],
+          ['Rent collected', moneyPdf(s.rentCollected)],
+          for (final t
+              in PaymentType.values.where((t) => t != PaymentType.rent))
+            [
+              t.label,
+              moneyPdf(d.payments
+                  .where((p) => p.type == t && sameMonth(p.month, d.month))
+                  .fold<double>(0, (a, p) => a + p.amount))
+            ],
         ],
-    ], align: right, totalRow: ['Total income', moneyPdf(s.totalIncome)]),
+        align: right,
+        totalRow: ['Total income', moneyPdf(s.totalIncome)]),
     _title('Expenses by category'),
     if (s.expenseByCategory.isEmpty)
       _empty('No expenses recorded this month.')
@@ -239,14 +249,16 @@ List<pw.Widget> _summary(ReportData d) {
       _table(
         ['Category', 'Amount'],
         [
-          for (final e in (s.expenseByCategory.entries.toList()
-            ..sort((a, b) => b.value.compareTo(a.value))))
+          for (final e
+              in (s.expenseByCategory.entries.toList()
+                ..sort((a, b) => b.value.compareTo(a.value))))
             [e.key, moneyPdf(e.value)]
         ],
         align: right,
         totalRow: ['Total expenses', moneyPdf(s.expenses)],
       ),
-    _title('Pending rent (${s.unpaid.length} tenants, ${s.overdue.length} overdue)'),
+    _title(
+        'Pending rent (${s.unpaid.length} tenants, ${s.overdue.length} overdue)'),
     if (s.unpaid.isEmpty)
       _empty('All rent collected for this month.')
     else
@@ -258,7 +270,9 @@ List<pw.Widget> _summary(ReportData d) {
               u.tenant.name,
               d.roomOf(u.tenant),
               u.tenant.phone,
-              u.isOverdue ? 'OVERDUE ${u.daysOverdue}d' : 'Due ${fmtDate(u.dueDate)}',
+              u.isOverdue
+                  ? 'OVERDUE ${u.daysOverdue}d'
+                  : 'Due ${fmtDate(u.dueDate)}',
               moneyPdf(u.due)
             ]
         ],
@@ -321,12 +335,22 @@ List<pw.Widget> _rent(ReportData d) {
         ['Date', 'Tenant', 'Type', 'Mode', 'Amount'],
         [
           for (final p in list)
-            [fmtDate(p.date), d.tenantName(p.tenantId), p.type.label, p.mode,
-              moneyPdf(p.amount)]
+            [
+              fmtDate(p.date),
+              d.tenantName(p.tenantId),
+              p.type.label,
+              p.mode,
+              moneyPdf(p.amount)
+            ]
         ],
         align: {4: pw.Alignment.centerRight},
-        totalRow: ['Total', '', '', '',
-          moneyPdf(list.fold<double>(0, (a, p) => a + p.amount))],
+        totalRow: [
+          'Total',
+          '',
+          '',
+          '',
+          moneyPdf(list.fold<double>(0, (a, p) => a + p.amount))
+        ],
       );
     }(),
   ];
@@ -349,8 +373,9 @@ List<pw.Widget> _expenses(ReportData d) {
       _table(
         ['Category', 'Amount', 'Share'],
         [
-          for (final e in (s.expenseByCategory.entries.toList()
-            ..sort((a, b) => b.value.compareTo(a.value))))
+          for (final e
+              in (s.expenseByCategory.entries.toList()
+                ..sort((a, b) => b.value.compareTo(a.value))))
             [
               e.key,
               moneyPdf(e.value),
@@ -506,8 +531,7 @@ List<pw.Widget> _electricity(ReportData d) {
       .where((b) => sameMonth(b.month, d.month))
       .toList()
     ..sort((a, b) => _roomNo(d, a.roomId).compareTo(_roomNo(d, b.roomId)));
-  final shares =
-      electricityShares(d.electricityBills, d.tenants, d.payments);
+  final shares = electricityShares(d.electricityBills, d.tenants, d.payments);
   final monthShares = shares.where((x) => sameMonth(x.month, d.month)).toList();
   final older =
       shares.where((x) => !x.isPaid && x.month.isBefore(d.month)).toList();
@@ -517,8 +541,8 @@ List<pw.Widget> _electricity(ReportData d) {
   final pending = sum(monthShares.map((x) => x.due));
   final units = sum(bills.map((b) => b.units));
   final noBill = d.rooms
-      .where((r) =>
-          r.separateElectricity && !bills.any((b) => b.roomId == r.id))
+      .where(
+          (r) => r.separateElectricity && !bills.any((b) => b.roomId == r.id))
       .map((r) => r.number)
       .toList()
     ..sort();
@@ -528,25 +552,23 @@ List<pw.Widget> _electricity(ReportData d) {
   const r = pw.Alignment.centerRight;
 
   return [
-    pw.Row(children: [
-      _kpi('Total bill amount', moneyPdf(billed)),
-      _kpi('Collected', moneyPdf(collected), color: _green),
-      _kpi('Pending', moneyPdf(pending),
-          color: pending > 0 ? PdfColors.red : _green),
-    ]),
-    pw.Row(children: [
-      _kpi('Rooms billed', '${bills.length}'),
-      _kpi('Total units used', fmtUnits(units)),
-      _kpi('Unit rate (PG details)',
-          d.profile.unitRate == 0 ? 'Not set' : '${moneyPdf(d.profile.unitRate)} / unit'),
-    ]),
     _title('Room-wise bill'),
     if (bills.isEmpty)
       _empty('No electricity bills entered for ${fmtMonth(d.month)}.')
     else
       _table(
-        ['Room', 'Last unit', 'Now unit', 'Units', 'Rate', 'Amount', 'People',
-          'Each', 'Paid', 'Pending'],
+        [
+          'Room',
+          'Last unit',
+          'Now unit',
+          'Units',
+          'Rate',
+          'Amount',
+          'People',
+          'Each',
+          'Paid',
+          'Pending'
+        ],
         [
           for (final b in bills)
             () {
@@ -567,8 +589,16 @@ List<pw.Widget> _electricity(ReportData d) {
         ],
         align: {for (var i = 1; i < 10; i++) i: r},
         totalRow: [
-          'Total', '', '', fmtUnits(units), '', moneyPdf(billed), '', '',
-          moneyPdf(collected), moneyPdf(pending)
+          'Total',
+          '',
+          '',
+          fmtUnits(units),
+          '',
+          moneyPdf(billed),
+          '',
+          '',
+          moneyPdf(collected),
+          moneyPdf(pending)
         ],
       ),
     pw.Padding(
@@ -598,8 +628,13 @@ List<pw.Widget> _electricity(ReportData d) {
         ],
         align: {3: r, 4: r, 5: r},
         totalRow: [
-          'Total', '', '', moneyPdf(billed), moneyPdf(collected),
-          moneyPdf(pending), ''
+          'Total',
+          '',
+          '',
+          moneyPdf(billed),
+          moneyPdf(collected),
+          moneyPdf(pending),
+          ''
         ],
       ),
     if (older.isNotEmpty) ...[
@@ -608,8 +643,12 @@ List<pw.Widget> _electricity(ReportData d) {
         ['Tenant', 'Room', 'Month', 'Pending'],
         [
           for (final x in older)
-            [x.tenant.name, _roomNo(d, x.bill.roomId), fmtMonth(x.month),
-              moneyPdf(x.due)]
+            [
+              x.tenant.name,
+              _roomNo(d, x.bill.roomId),
+              fmtMonth(x.month),
+              moneyPdf(x.due)
+            ]
         ],
         align: {3: r},
         totalRow: ['Total', '', '', moneyPdf(sum(older.map((x) => x.due)))],
@@ -617,7 +656,8 @@ List<pw.Widget> _electricity(ReportData d) {
     ],
     if (noBill.isNotEmpty) ...[
       _title('Bill not entered yet'),
-      pw.Text('Rooms with separate electricity and no bill for '
+      pw.Text(
+          'Rooms with separate electricity and no bill for '
           '${fmtMonth(d.month)}: ${noBill.join(', ')}',
           style: const pw.TextStyle(fontSize: 9, color: _orange)),
     ],

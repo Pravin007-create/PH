@@ -45,6 +45,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           rentCycle: _cycle,
           dueDays: _dueDays,
           unitRate: double.tryParse(_unitRate.text.trim()) ?? 0,
+          language: ref.read(profileProvider).language,
         ));
     showSaved(context, 'PG details saved');
     context.pop();
@@ -230,3 +231,4 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 /// 8.0 → "8", 8.5 → "8.5"
 String _trim(double v) =>
     v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toString();
+

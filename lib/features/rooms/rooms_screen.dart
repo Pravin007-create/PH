@@ -79,11 +79,12 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
         );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Rooms')),
+      appBar: AppBar(title: Text(context.tr('Rooms'))),
       floatingActionButton: rooms.isEmpty
           ? null
           : AddButton(
-              label: 'Add Room', onPressed: () => context.push('/rooms/new')),
+              label: context.tr('Add Room'),
+              onPressed: () => context.push('/rooms/new')),
       body: rooms.isEmpty
           ? Center(
               child: SingleChildScrollView(
@@ -113,7 +114,7 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
                       ),
                       const SizedBox(height: 12),
                       SearchField(
-                          hint: 'Search room number or floor',
+                          hint: context.tr('Search room number or floor'),
                           onChanged: (v) => setState(() => _query = v)),
                       const SizedBox(height: 12),
                       chipRow([
@@ -122,13 +123,13 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
                             avatar: f == _Availability.billDue
                                 ? const Icon(Icons.bolt_rounded, size: 18)
                                 : null,
-                            label: Text(switch (f) {
+                            label: Text(context.tr(switch (f) {
                               _Availability.all => 'All',
                               _Availability.vacant => 'Has vacancy',
                               _Availability.vacatingSoon => 'Vacating soon',
                               _Availability.full => 'Full',
                               _Availability.billDue => 'Bill pending',
-                            }),
+                            })),
                             selected: _availability == f,
                             onSelected: (_) =>
                                 setState(() => _availability = f),
@@ -138,11 +139,11 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
                       chipRow([
                         for (final f in _AcFilter.values)
                           ChoiceChip(
-                            label: Text(switch (f) {
+                            label: Text(context.tr(switch (f) {
                               _AcFilter.any => 'AC & Non-AC',
                               _AcFilter.ac => 'AC',
                               _AcFilter.nonAc => 'Non-AC',
-                            }),
+                            })),
                             selected: _ac == f,
                             onSelected: (_) => setState(() => _ac = f),
                           ),
@@ -150,7 +151,9 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
                             height: 24, child: VerticalDivider(width: 8)),
                         for (final n in sharingOptions)
                           FilterChip(
-                            label: Text(n == 1 ? 'Single' : '$n-sharing'),
+                            label: Text(n == 1
+                                ? context.tr('Single')
+                                : context.tr('{n}-sharing', {'n': n})),
                             selected: _sharing == n,
                             onSelected: (on) =>
                                 setState(() => _sharing = on ? n : null),
@@ -164,8 +167,7 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
                             Expanded(
                               child: Text(
                                   'Showing ${shown.length} of ${rooms.length} rooms',
-                                  style:
-                                      Theme.of(context).textTheme.bodySmall),
+                                  style: Theme.of(context).textTheme.bodySmall),
                             ),
                             TextButton(
                               onPressed: () => setState(() {
@@ -173,7 +175,7 @@ class _RoomsScreenState extends ConsumerState<RoomsScreen> {
                                 _ac = _AcFilter.any;
                                 _sharing = null;
                               }),
-                              child: const Text('Clear filters'),
+                              child: Text(context.tr('Clear filters')),
                             ),
                           ]),
                         ),
@@ -249,14 +251,17 @@ class _RoomCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Room ${room.number}',
+                      Text(context.tr('Room {n}', {'n': room.number}),
                           style: theme.textTheme.titleMedium
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       Text(
                         [
-                          if (room.floor.isNotEmpty) 'Floor ${room.floor}',
-                          beds == 1 ? 'Single' : '$beds-sharing',
-                          room.isAC ? 'AC' : 'Non-AC',
+                          if (room.floor.isNotEmpty)
+                            context.tr('Floor {f}', {'f': room.floor}),
+                          beds == 1
+                              ? context.tr('Single')
+                              : context.tr('{n}-sharing', {'n': beds}),
+                          room.isAC ? 'AC' : context.tr('Non-AC'),
                         ].join(' · '),
                         style: TextStyle(
                             color: theme.colorScheme.onSurfaceVariant),
@@ -267,17 +272,23 @@ class _RoomCard extends StatelessWidget {
               ]),
               const SizedBox(height: 10),
               Wrap(spacing: 6, runSpacing: 6, children: [
-                StatusChip(isFull ? 'Full' : '${beds - filled} vacant',
+                StatusChip(
+                    isFull
+                        ? context.tr('Full')
+                        : context.tr('{n} vacant', {'n': beds - filled}),
                     color: color),
                 for (final t in leaving)
                   StatusChip(
                     moveOutPending(t, today)
-                        ? 'Move-out pending'
-                        : '1 vacant from ${fmtDate(t.vacantFrom!)}',
+                        ? context.tr('Move-out pending')
+                        : context.tr(
+                            '1 vacant from {d}', {'d': fmtDate(t.vacantFrom!)}),
                     color: moveOutPending(t, today) ? _red : AppColors.purple,
                   ),
                 if (billDue > 0)
-                  StatusChip('⚡ Bill ${money(billDue)} pending', color: _red),
+                  StatusChip(
+                      context.tr('⚡ Bill {a} pending', {'a': money(billDue)}),
+                      color: _red),
               ]),
               const SizedBox(height: 12),
               ClipRRect(
@@ -292,10 +303,12 @@ class _RoomCard extends StatelessWidget {
               const SizedBox(height: 8),
               Row(children: [
                 Expanded(
-                  child: Text('$filled of $beds beds filled',
+                  child: Text(
+                      context.tr(
+                          '{n} of {b} beds filled', {'n': filled, 'b': beds}),
                       style: theme.textTheme.bodySmall),
                 ),
-                Text('${money(room.rent)} / bed',
+                Text(context.tr('{a} / bed', {'a': money(room.rent)}),
                     style: theme.textTheme.bodySmall
                         ?.copyWith(fontWeight: FontWeight.w600)),
               ]),

@@ -151,7 +151,8 @@ class _TenantFormScreenState extends ConsumerState<TenantFormScreen> {
         message:
             'This also hides them from reports. To keep history, use "Mark as moved out" instead.');
     if (!ok || !mounted) return;
-    final docs = ref.read(tenantsProvider.notifier).byId(_existing!.id)?.documents;
+    final docs =
+        ref.read(tenantsProvider.notifier).byId(_existing!.id)?.documents;
     ref.read(tenantsProvider.notifier).remove(_existing!.id);
     if (docs != null && docs.isNotEmpty && _docsDir != null) {
       deleteDocumentFiles(_docsDir!, docs);
@@ -547,10 +548,9 @@ class _TenantActions extends ConsumerWidget {
                                 color: Color(0xFFDC2626),
                                 fontWeight: FontWeight.w600)),
                       ),
-                      const Text('Collect',
-                          style: TextStyle(
-                              color: Color(0xFFDC2626),
-                              fontWeight: FontWeight.w700)),
+                      CollectButton(
+                          onPressed: () => context.push(
+                              '/payments/new?tenant=${tenant.id}&month=${d.month.toIso8601String()}')),
                     ]),
                   ),
                 ),
@@ -570,10 +570,9 @@ class _TenantActions extends ConsumerWidget {
                             style:
                                 const TextStyle(fontWeight: FontWeight.w600)),
                       ),
-                      Text('Collect',
-                          style: TextStyle(
-                              color: Theme.of(context).colorScheme.primary,
-                              fontWeight: FontWeight.w700)),
+                      CollectButton(
+                          onPressed: () => context.push(
+                              '/payments/new?tenant=${tenant.id}&type=electricity&month=${d.month.toIso8601String()}')),
                     ]),
                   ),
                 ),

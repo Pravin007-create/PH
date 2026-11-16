@@ -575,6 +575,9 @@ class PgProfile {
   /// Electricity charge per unit (₹). 0 = not set.
   final double unitRate;
 
+  /// App language: 'en' or 'ta'.
+  final String language;
+
   const PgProfile({
     this.pgName = '',
     this.ownerName = '',
@@ -583,9 +586,21 @@ class PgProfile {
     this.rentCycle = RentCycle.monthStart,
     this.dueDays = 5,
     this.unitRate = 0,
+    this.language = 'en',
   });
 
   bool get isEmpty => pgName.isEmpty && ownerName.isEmpty;
+
+  PgProfile copyWith({String? language}) => PgProfile(
+        pgName: pgName,
+        ownerName: ownerName,
+        phone: phone,
+        address: address,
+        rentCycle: rentCycle,
+        dueDays: dueDays,
+        unitRate: unitRate,
+        language: language ?? this.language,
+      );
 
   Map<String, dynamic> toJson() => {
         'pgName': pgName,
@@ -595,6 +610,7 @@ class PgProfile {
         'rentCycle': rentCycle.name,
         'dueDays': dueDays,
         'unitRate': unitRate,
+        'language': language,
       };
 
   factory PgProfile.fromJson(Map<String, dynamic> j) => PgProfile(
@@ -606,5 +622,6 @@ class PgProfile {
             orElse: () => RentCycle.monthStart),
         dueDays: ((j['dueDays'] ?? 5) as num).toInt().clamp(1, 28),
         unitRate: ((j['unitRate'] ?? 0) as num).toDouble(),
+        language: j['language'] == 'ta' ? 'ta' : 'en',
       );
 }

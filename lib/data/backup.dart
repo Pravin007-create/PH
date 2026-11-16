@@ -1,4 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -42,10 +46,14 @@ String exportBackup(SharedPreferences prefs, {DateTime? now}) {
 }
 
 class BackupSummary {
-  const BackupSummary(this.counts, this.exportedAt, this.pgName);
+  const BackupSummary(this.counts, this.exportedAt, this.pgName,
+      {this.documentFiles = 0});
   final Map<String, int> counts;
   final DateTime? exportedAt;
   final String pgName;
+
+  /// Document photos/PDFs included in a .zip backup.
+  final int documentFiles;
 
   int get rooms => counts['rooms'] ?? 0;
   int get tenants => counts['tenants'] ?? 0;
@@ -119,4 +127,116 @@ Future<BackupSummary> importBackup(SharedPreferences prefs, String json) async {
     await prefs.setString('profile', jsonEncode(map['profile']));
   }
   return summary;
+}
+
+// ---------------------------------------------------------------------------
+// .zip backup: backup.json + tenant_docs/<files>
+// ---------------------------------------------------------------------------
+
+const backupJsonName = 'backup.json';
+const backupDocsFolder = 'tenant_docs/';
+
+/// File names of every document referenced by tenants in [prefs].
+Set<String> _referencedDocs(SharedPreferences prefs) {
+  final names = <String>{};
+  for (final t in _readList(prefs, 'tenants')) {
+    for (final d in ((t as Map)['documents'] ?? const []) as List) {
+      final path = (d as Map)['path'];
+      if (path is String && !path.contains('/') && !path.contains('\\')) {
+        names.add(path);
+      }
+    }
+  }
+  return names;
+}
+
+/// All data + document files as one zip. Missing files are skipped.
+Future<Uint8List> exportBackupZip(SharedPreferences prefs, String docsDir,
+    {DateTime? now}) async {
+  final archive = Archive()
+    ..addFile(
+        ArchiveFile.string(backupJsonName, exportBackup(prefs, now: now)));
+  for (final name in _referencedDocs(prefs)) {
+    final f = File('$docsDir/$name');
+    if (!f.existsSync()) continue;
+    final bytes = await f.readAsBytes();
+    // Photos/PDFs are already compressed: store them as-is (faster).
+    archive.addFile(
+        ArchiveFile.noCompress('$backupDocsFolder$name', bytes.length, bytes));
+  }
+  return ZipEncoder().encodeBytes(archive);
+}
+
+bool _isZip(Uint8List bytes) =>
+    bytes.length > 3 && bytes[0] == 0x50 && bytes[1] == 0x4B; // "PK"
+
+/// Reads a backup file (.zip, or an old .json) and returns its JSON text and
+/// document files, without changing anything.
+({String json, Map<String, Uint8List> docs}) _unpack(Uint8List bytes) {
+  if (!_isZip(bytes)) {
+    try {
+      return (json: utf8.decode(bytes), docs: const {});
+    } catch (_) {
+      throw BackupException('This is not a valid backup file.');
+    }
+  }
+  final Archive archive;
+  try {
+    archive = ZipDecoder().decodeBytes(bytes);
+  } catch (_) {
+    throw BackupException('The backup file is damaged.');
+  }
+  final jsonFile = archive.findFile(backupJsonName);
+  if (jsonFile == null) {
+    throw BackupException('This zip is not a PG Management backup.');
+  }
+  final docs = <String, Uint8List>{};
+  for (final f in archive.files) {
+    if (!f.isFile || !f.name.startsWith(backupDocsFolder)) continue;
+    final name = f.name.substring(backupDocsFolder.length);
+    // Only plain file names – never write outside the docs folder.
+    if (name.isEmpty ||
+        name.contains('/') ||
+        name.contains('\\') ||
+        name.startsWith('.')) {
+      continue;
+    }
+    docs[name] = f.content;
+  }
+  return (json: utf8.decode(jsonFile.content), docs: docs);
+}
+
+/// What's inside a backup file (zip or json), without importing it.
+BackupSummary readBackupFile(Uint8List bytes) {
+  final u = _unpack(bytes);
+  final s = readBackup(u.json);
+  return BackupSummary(s.counts, s.exportedAt, s.pgName,
+      documentFiles: u.docs.length);
+}
+
+/// Replaces all data and document files with the backup.
+/// Documents of the old data that aren't in the backup are removed.
+/// Throws [BackupException] (changing nothing) if the file is invalid.
+Future<BackupSummary> importBackupFile(
+    SharedPreferences prefs, Uint8List bytes, String docsDir) async {
+  final u = _unpack(bytes);
+  readBackup(u.json); // validate everything first
+  final dir = Directory(docsDir);
+  await dir.create(recursive: true);
+  for (final e in u.docs.entries) {
+    await File('$docsDir/${e.key}').writeAsBytes(e.value, flush: true);
+  }
+  final summary = await importBackup(prefs, u.json);
+  // Remove files no tenant uses any more (from the replaced data).
+  final keep = _referencedDocs(prefs);
+  for (final f in dir.listSync().whereType<File>()) {
+    final name = f.uri.pathSegments.last;
+    if (!keep.contains(name)) {
+      try {
+        f.deleteSync();
+      } catch (_) {}
+    }
+  }
+  return BackupSummary(summary.counts, summary.exportedAt, summary.pgName,
+      documentFiles: u.docs.length);
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/format.dart';
 import '../core/theme.dart';
 import '../data/calculations.dart';
 import 'common.dart';
@@ -18,7 +19,22 @@ class DueChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      StatusChip(due.label, color: dueColor(due.status));
+      StatusChip(dueLabel(context, due), color: dueColor(due.status));
+}
+
+/// Translated "Overdue 8 days" / "Due by 5 Nov" / "From 31 Oct" / "Paid".
+String dueLabel(BuildContext context, TenantDue d) {
+  String short(DateTime x) => fmtDate(x).replaceAll(RegExp(r' \d{4}$'), '');
+  return switch (d.status) {
+    DueStatus.paid => context.tr('Paid'),
+    DueStatus.overdue => d.daysOverdue == 1
+        ? context.tr('Overdue 1 day')
+        : context.tr('Overdue {n} days', {'n': d.daysOverdue}),
+    DueStatus.due => d.daysLeft == 0
+        ? context.tr('Due today')
+        : context.tr('Due by {d}', {'d': short(d.dueDate)}),
+    DueStatus.upcoming => context.tr('From {d}', {'d': short(d.collectFrom)}),
+  };
 }
 
 /// Red "Document proof not submitted" badge for tenants without ID proof.
@@ -45,9 +61,9 @@ class DocsPendingChip extends StatelessWidget {
             ),
           ),
           TextSpan(
-              text: short
+              text: context.tr(short
                   ? 'ID proof not submitted'
-                  : 'Document proof not submitted'),
+                  : 'Document proof not submitted')),
         ]),
         style: const TextStyle(
             color: red, fontSize: 11, fontWeight: FontWeight.w600),

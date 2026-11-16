@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +14,7 @@ import 'package:pg_hostel_management/data/documents.dart';
 import 'package:pg_hostel_management/data/models.dart';
 import 'package:pg_hostel_management/data/store.dart';
 import 'package:pg_hostel_management/features/rooms/room_form_screen.dart';
+import 'package:pg_hostel_management/widgets/common.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'widget_test.dart' as w;
@@ -456,7 +460,8 @@ void main() {
       await w.tapOn(tester, find.text('Payments'));
       await w.tapOn(tester, find.byTooltip('Electricity bills'));
       expect(find.text('Room 101'), findsOneWidget);
-      expect(find.text('Collect ${money(500)}'), findsNWidgets(2));
+      expect(find.textContaining('share ${money(500)}'), findsNWidgets(2));
+      expect(find.text('Collect'), findsNWidgets(2));
       expect(tester.takeException(), isNull);
     });
   });
@@ -644,5 +649,203 @@ void main() {
         find.widgetWithText(TextFormField, 'Now unit *'), '1200');
     await w.tapOn(tester, find.text('Save Bill'));
     expect(find.text('Less than last'), findsOneWidget);
+  });
+
+  testWidgets('Payments: tap paid rent/electricity → payment details; '
+      'month bar stays pinned', (tester) async {
+    final now = DateTime.now();
+    final month = DateTime(now.year, now.month);
+    final join = DateTime(2026, 1, 1).toIso8601String();
+    SharedPreferences.setMockInitialValues({
+      'profile': jsonEncode({'pgName': 'Test PG', 'rentCycle': 'monthStart'}),
+      'rooms': jsonEncode([
+        {'id': 'r1', 'number': '101', 'beds': 9, 'rent': 6000,
+          'separateElectricity': true}
+      ]),
+      'tenants': jsonEncode([
+        for (final n in ['Asha', 'Bala', 'Chitra', 'Deepa', 'Esha', 'Farah'])
+          {'id': n, 'name': n, 'phone': '9876543210', 'roomId': 'r1',
+            'rent': 6000, 'joinDate': join, 'createdAt': join}
+      ]),
+      'payments': jsonEncode([
+        Payment(id: 'p1', tenantId: 'Asha', amount: 6000,
+                type: PaymentType.rent, month: month, date: now, mode: 'UPI')
+            .toJson(),
+        Payment(id: 'p2', tenantId: 'Asha', amount: 300,
+                type: PaymentType.electricity, month: month, date: now)
+            .toJson(),
+      ]),
+      'electricity_bills': jsonEncode([
+        ElectricityBill(id: 'e1', roomId: 'r1', month: month, amount: 1800,
+                tenantIds: const ['Asha', 'Bala', 'Chitra', 'Deepa', 'Esha', 'Farah'],
+                createdAt: now)
+            .toJson()
+      ]),
+    });
+    await w.pumpApp(tester, size: const Size(320, 640));
+    await w.tapOn(tester, find.text('Payments'));
+    expect(find.text('MONTH'), findsOneWidget);
+
+    // Scroll to the bottom: month bar is still on screen.
+    await tester.drag(find.byType(ListView).first, const Offset(0, -2000));
+    await tester.pumpAndSettle();
+    expect(find.text('MONTH').hitTestable(), findsOneWidget);
+    await tester.drag(find.byType(ListView).first, const Offset(0, 2000));
+    await tester.pumpAndSettle();
+
+    // Paid rent row → Payment Details (not the tenant profile).
+    await w.tapOn(tester, find.text('Asha'));
+    expect(find.text('Payment Details'), findsOneWidget);
+    expect(find.text('UPI'), findsOneWidget);
+    await w.back(tester);
+
+    // Unpaid row still opens the tenant.
+    await w.tapOn(tester, find.text('Bala'));
+    expect(find.text('Tenant Details'), findsOneWidget);
+    await w.back(tester);
+
+    // Electricity tab: paid share → its payment.
+    await w.tapOn(tester, find.byTooltip('Electricity bills'));
+    await w.tapOn(tester, find.text('Asha'));
+    expect(find.text('Payment Details'), findsOneWidget);
+    expect(find.text(money(300)), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  group('Backup with documents (.zip)', () {
+    Map<String, Object> seedData() => {
+          'profile': jsonEncode({'pgName': 'Sunrise PG'}),
+          'tenants': jsonEncode([
+            {
+              'id': 't1', 'name': 'Ravi', 'phone': '9876543210', 'rent': 6000,
+              'joinDate': DateTime(2026, 1).toIso8601String(),
+              'documentsSubmitted': true,
+              'documents': [
+                {'id': 'd1', 'label': 'Aadhaar card', 'path': 't1_1.jpg',
+                  'addedAt': DateTime(2026, 11).toIso8601String()},
+                {'id': 'd2', 'label': 'Agreement', 'path': 't1_2.pdf',
+                  'addedAt': DateTime(2026, 11).toIso8601String()},
+              ],
+            }
+          ]),
+        };
+
+    test('Export zip includes photos; import on a new phone restores them',
+        () async {
+      final oldPhone = Directory.systemTemp.createTempSync('old_phone');
+      File('${oldPhone.path}/t1_1.jpg').writeAsBytesSync([1, 2, 3]);
+      File('${oldPhone.path}/t1_2.pdf').writeAsBytesSync([4, 5]);
+      SharedPreferences.setMockInitialValues(seedData());
+      final prefs = await SharedPreferences.getInstance();
+      final zip = await exportBackupZip(prefs, oldPhone.path);
+      expect(readBackupFile(zip).documentFiles, 2);
+
+      // New phone: empty data, a stray old file that should be cleaned up.
+      await prefs.clear();
+      final newPhone = Directory.systemTemp.createTempSync('new_phone');
+      File('${newPhone.path}/old_unused.jpg').writeAsBytesSync([9]);
+      final summary = await importBackupFile(prefs, zip, newPhone.path);
+
+      expect(summary.tenants, 1);
+      expect(summary.documentFiles, 2);
+      expect(File('${newPhone.path}/t1_1.jpg').readAsBytesSync(), [1, 2, 3]);
+      expect(File('${newPhone.path}/t1_2.pdf').readAsBytesSync(), [4, 5]);
+      expect(File('${newPhone.path}/old_unused.jpg').existsSync(), isFalse);
+      expect(jsonDecode(prefs.getString('tenants')!)[0]['documents'],
+          hasLength(2));
+      oldPhone.deleteSync(recursive: true);
+      newPhone.deleteSync(recursive: true);
+    });
+
+    test('Old .json backups still import', () async {
+      SharedPreferences.setMockInitialValues(seedData());
+      final prefs = await SharedPreferences.getInstance();
+      final json = exportBackup(prefs);
+      await prefs.clear();
+      final dir = Directory.systemTemp.createTempSync('json_import');
+      final s = await importBackupFile(
+          prefs, Uint8List.fromList(utf8.encode(json)), dir.path);
+      expect(s.tenants, 1);
+      expect(s.documentFiles, 0);
+      dir.deleteSync(recursive: true);
+    });
+
+    test('Zip entries trying to escape the folder are ignored', () async {
+      SharedPreferences.setMockInitialValues(seedData());
+      final prefs = await SharedPreferences.getInstance();
+      final archive = Archive()
+        ..addFile(ArchiveFile.string(backupJsonName, exportBackup(prefs)))
+        ..addFile(ArchiveFile.bytes('tenant_docs/../evil.txt', [1]))
+        ..addFile(ArchiveFile.bytes('tenant_docs/t1_1.jpg', [7]));
+      final zip = ZipEncoder().encodeBytes(archive);
+      final dir = Directory.systemTemp.createTempSync('zip_safe');
+      final docs = Directory('${dir.path}/tenant_docs')..createSync();
+      final s = await importBackupFile(prefs, zip, docs.path);
+      expect(s.documentFiles, 1);
+      expect(File('${dir.path}/evil.txt').existsSync(), isFalse);
+      expect(File('${docs.path}/t1_1.jpg').readAsBytesSync(), [7]);
+      dir.deleteSync(recursive: true);
+    });
+
+    test('A random zip is rejected', () {
+      final zip = ZipEncoder()
+          .encodeBytes(Archive()..addFile(ArchiveFile.string('a.txt', 'hi')));
+      expect(() => readBackupFile(zip), throwsA(isA<BackupException>()));
+    });
+  });
+
+  testWidgets('Language: switch to Tamil in PG details, nav + home change',
+      (tester) async {
+    await w.pumpApp(tester, size: const Size(320, 700));
+    expect(find.text('Rooms'), findsOneWidget);
+    await w.tapOn(tester, find.text('More'));
+    await w.tapOn(tester, find.text('Language / மொழி'));
+    await w.tapOn(tester, find.text('தமிழ்'));
+    // Bottom navigation and More screen are now in Tamil.
+    expect(find.text('அறைகள்'), findsOneWidget);
+    expect(find.text('மேலும்'), findsWidgets);
+    expect(find.text('அனைத்து தரவையும் ஏற்றுமதி'), findsOneWidget);
+    await w.tapOn(tester, find.text('முகப்பு'));
+    expect(find.text('சுருக்கம்'), findsOneWidget); // Overview
+    expect(
+        jsonDecode((await SharedPreferences.getInstance())
+            .getString('profile')!)['language'],
+        'ta');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Payments: top cards follow the selected tab', (tester) async {
+    final now = DateTime.now();
+    final month = DateTime(now.year, now.month);
+    final join = DateTime(2026, 1, 1).toIso8601String();
+    SharedPreferences.setMockInitialValues({
+      'tenants': jsonEncode([
+        {'id': 'a', 'name': 'Asha', 'phone': '9876543210', 'roomId': 'r1',
+          'rent': 6000, 'joinDate': join, 'createdAt': join}
+      ]),
+      'electricity_bills': jsonEncode([
+        ElectricityBill(id: 'e1', roomId: 'r1', month: month, amount: 700,
+                tenantIds: const ['a'], createdAt: now)
+            .toJson()
+      ]),
+    });
+    await w.pumpApp(tester, size: const Size(320, 700));
+    await w.tapOn(tester, find.text('Payments'));
+    expect(find.text('Rent collected'), findsOneWidget);
+    expect(find.text('Electricity pending'), findsNothing);
+
+    await w.tapOn(tester, find.byTooltip('Electricity bills'));
+    expect(find.text('Rent collected'), findsNothing);
+    expect(find.text('Electricity pending'), findsOneWidget);
+    expect(find.text(money(700)), findsWidgets);
+    // Amber collect button with the ₹ icon.
+    final btn = tester.widget<FilledButton>(find
+        .ancestor(of: find.textContaining('Collect'), matching: find.byType(FilledButton))
+        .first);
+    expect(btn.style?.backgroundColor?.resolve({}), CollectButton.color);
+
+    await w.tapOn(tester, find.byTooltip('Payments received'));
+    expect(find.text('Received this month'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
